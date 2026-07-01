@@ -1,0 +1,30 @@
+# Databricks workflow contract for Phase 1 training execution.
+# Update this file when schedule, cluster, input path, or training entrypoint changes.
+# Databricks job contract for Phase 1 training execution.
+# This YAML documents the scheduled training workflow, cluster binding, and
+# parameter contract expected by the repository training entrypoint.
+resources:
+  jobs:
+    parcel_volume_forecast_train:
+      name: parcel-volume-forecast-train
+      tasks:
+        - task_key: train_xgboost
+          spark_python_task:
+            # Repository training entrypoint; keep aligned with src/training implementation.
+            python_file: src/training/train_xgboost.py
+            parameters:
+              # Input and experiment parameters must match runbook + governance evidence flows.
+              - --input-csv
+              - /dbfs/FileStore/forecasting/multi_client_ib_uplift.csv
+              - --experiment
+              - /Shared/forecasting/parcel-volume-forecast
+              - --dataset-version
+              - v1
+              - --run-mode
+              - production
+          existing_cluster_id: ${var.training_cluster_id}
+      schedule:
+        # Weekly cadence for controlled retraining; review in phase closeout if changed.
+        quartz_cron_expression: "0 0 5 ? * MON"
+        timezone_id: "Europe/London"
+      max_concurrent_runs: 1
