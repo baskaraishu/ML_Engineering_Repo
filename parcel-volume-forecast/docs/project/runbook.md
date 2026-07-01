@@ -148,7 +148,7 @@ databricks jobs run-now --job-id $jobId --python-params '["--input-csv","/dbfs/F
 ```bash
 curl -n -X POST https://<databricks-instance>/api/2.1/jobs/run-now \
   -H 'Content-Type: application/json' \
-   -d '{"job_id": 610583632972805, "python_params": ["--input-csv", "/dbfs/FileStore/forecasting/multi_client_ib_uplift.csv", "--dataset-version", "v1", "--run-mode", "debug"]}'
+   -d '{"job_id": 587032785657077, "python_params": ["--input-csv", "/dbfs/FileStore/forecasting/multi_client_ib_uplift.csv", "--dataset-version", "v1", "--run-mode", "debug"]}'
 ```
 
 5. Databricks SDK
