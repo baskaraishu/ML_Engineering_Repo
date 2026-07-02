@@ -36,6 +36,13 @@ def build_payload(cluster_id: str, input_csv: str, workspace_repo_root: str) -> 
                             "production",
                         ],
                     },
+                    "libraries": [
+                        {
+                            "pypi": {
+                                "package": "xgboost==3.3.0",
+                            }
+                        }
+                    ],
                     "existing_cluster_id": cluster_id,
                 }
             ],

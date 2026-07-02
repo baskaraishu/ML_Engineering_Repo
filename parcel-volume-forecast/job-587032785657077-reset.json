@@ -16,7 +16,10 @@
       {
         "environment_key": "Default",
         "spec": {
-          "environment_version": "5"
+          "environment_version": "5",
+          "dependencies": [
+            "xgboost==3.3.0"
+          ]
         }
       }
     ],
@@ -29,7 +32,7 @@
           "python_file": "parcel-volume-forecast/src/training/train_xgboost.py",
           "parameters": [
             "--input-csv",
-            "/dbfs/FileStore/forecasting/multi_client_ib_uplift.csv",
+            "/Workspace/Shared/forecasting/multi_client_ib_uplift.csv",
             "--experiment",
             "/Shared/forecasting/parcel-volume-forecast",
             "--dataset-version",

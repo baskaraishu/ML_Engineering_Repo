@@ -58,6 +58,24 @@ How do we standardize the production training path so that code is authored and 
 6. Training logs metrics, params, model artifacts, and governance report artifacts to MLflow.
 7. Reviewers validate the run using Databricks run state plus MLflow evidence.
 
+#### 5.1 Status
+- Done:
+  - The repository-backed training entrypoint is defined in `src/training/train_xgboost.py`.
+  - The Databricks job contract points to the repo-backed entrypoint and passes the expected runtime parameters.
+  - The runtime input source is wired to the DBFS CSV path in the job contract.
+  - MLflow logging and governance report emission are implemented in the training entrypoint.
+  - The live Git-backed Databricks job is able to reach the repository code path.
+  - The Databricks task now explicitly provisions `xgboost==3.3.0` so the runtime dependency is declared in the job contract.
+- Done (post-debug):
+  - Declared `xgboost==3.3.0` in the serverless environment spec (`environments[].spec.dependencies`) — not the task-level `libraries` block which only applies to classic clusters.
+  - Uploaded the training CSV to `/Workspace/Shared/forecasting/multi_client_ib_uplift.csv`. Serverless Jobs Compute v2 does not mount `/dbfs/`; Workspace paths are required.
+  - Updated the job's `--input-csv` parameter to the Workspace path and re-applied the reset.
+  - Confirmed run `123480460228569` completed with `result_state: SUCCESS`.
+  - MLflow Experiment `/Shared/forecasting/parcel-volume-forecast` was created and logged: 12 features, model artifact, CMMI gates, `run_summary.json`, `run_summary.html`.
+- Pending:
+  - Propagate the `/Workspace/Shared/forecasting/` input path convention into the runbook and other reset payloads.
+  - CI/CD-triggered deployment and trigger automation are not yet proven end-to-end.
+
 ### 5.2 Local smoke path
 1. Engineer runs local smoke from repository root.
 2. Smoke run validates packaging, imports, feature flow, training flow, and report emission locally.
