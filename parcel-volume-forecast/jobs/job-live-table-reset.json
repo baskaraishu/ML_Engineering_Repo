@@ -32,7 +32,7 @@
           "python_file": "parcel-volume-forecast/src/training/train_xgboost.py",
           "parameters": [
             "--input-csv",
-            "forecasting_prod.landing.multi_client_ib_uplift",
+            "evri_datalakehouse_prod_catalog.analytics_sandbox.fcast_multi_client_data_build_champion_ib_uplift",
             "--experiment",
             "/Shared/forecasting/parcel-volume-forecast",
             "--dataset-version",
