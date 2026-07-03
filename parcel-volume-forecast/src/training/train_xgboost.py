@@ -67,6 +67,7 @@ from src.config import (
     DEFAULT_SOURCE_CSV_PATH,
     DEFAULT_SOURCE_TABLE,
     SOURCE_TABLE_ENV_VAR,
+    TRAINING_LOOKBACK_DAYS,
 )
 from src.evaluation.metrics import smape
 from src.features.target_transform import build_uplift_target
@@ -123,10 +124,15 @@ def _load_training_data(input_source: str) -> pd.DataFrame:
         logger.info("Detected Unity Catalog table: %s", input_source)
         try:
             from pyspark.sql import SparkSession
+            from pyspark.sql import functions as F
+            from datetime import timedelta
             spark = SparkSession.getActiveSession()
             if spark is None:
                 raise RuntimeError("SparkSession not available. Cannot read from table in non-Databricks environment.")
-            df = spark.table(input_source).toPandas()
+            cutoff_date = (datetime.now() - timedelta(days=TRAINING_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
+            logger.info("Applying lookback filter: %s >= '%s' (%d days)", DATE_COL, cutoff_date, TRAINING_LOOKBACK_DAYS)
+            spark_df = spark.table(input_source).filter(F.col(DATE_COL) >= cutoff_date)
+            df = spark_df.toPandas()
         except ImportError:
             raise RuntimeError("PySpark not available. Cannot read from Unity Catalog tables in local environment.")
     else:
