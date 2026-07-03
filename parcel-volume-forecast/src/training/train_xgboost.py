@@ -265,6 +265,16 @@ def run_training(
         raise ValueError(f"Missing required date column '{cfg.date_col}' in input data.")
     df[cfg.date_col] = pd.to_datetime(df[cfg.date_col], errors="coerce")
 
+    # Drop rows where required columns are null (live tables may have sparse rows)
+    required_cols = [cfg.date_col, cfg.actual_col, cfg.baseline_col]
+    n_before = len(df)
+    df = df.dropna(subset=required_cols)
+    n_dropped = n_before - len(df)
+    if n_dropped:
+        logger.info("Dropped %d rows with nulls in required columns %s", n_dropped, required_cols)
+    if df.empty:
+        raise ValueError("Input training data is empty after dropping null rows.")
+
     # STEP 2: Validate input data — stops pipeline if validation fails
     validate_input_dataframe(df, cfg)
     
