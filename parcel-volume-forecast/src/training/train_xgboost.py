@@ -269,9 +269,11 @@ def run_training(
     required_cols = [cfg.date_col, cfg.actual_col, cfg.baseline_col]
     n_before = len(df)
     df = df.dropna(subset=required_cols)
+    # Drop rows with non-positive baseline (zero-history clients are untrainable for uplift)
+    df = df[df[cfg.baseline_col] > 0]
     n_dropped = n_before - len(df)
     if n_dropped:
-        logger.info("Dropped %d rows with nulls in required columns %s", n_dropped, required_cols)
+        logger.info("Dropped %d rows with nulls or non-positive baseline in %s", n_dropped, required_cols)
     if df.empty:
         raise ValueError("Input training data is empty after dropping null rows.")
 
