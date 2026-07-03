@@ -126,13 +126,58 @@ def _load_training_data(input_source: str) -> pd.DataFrame:
             from pyspark.sql import SparkSession
             from pyspark.sql import functions as F
             from datetime import timedelta
+
+            def _find_case_insensitive_column(columns: list[str], candidates: list[str]) -> str | None:
+                lookup = {c.lower(): c for c in columns}
+                for candidate in candidates:
+                    resolved = lookup.get(candidate.lower())
+                    if resolved:
+                        return resolved
+                return None
+
             spark = SparkSession.getActiveSession()
             if spark is None:
                 raise RuntimeError("SparkSession not available. Cannot read from table in non-Databricks environment.")
             cutoff_date = (datetime.now() - timedelta(days=TRAINING_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
-            logger.info("Applying lookback filter: %s >= '%s' (%d days)", DATE_COL, cutoff_date, TRAINING_LOOKBACK_DAYS)
-            spark_df = spark.table(input_source).filter(F.col(DATE_COL) >= cutoff_date)
+            spark_df = spark.table(input_source)
+
+            table_date_col = _find_case_insensitive_column(
+                spark_df.columns,
+                [DATE_COL, "preadvice_date", "DATE_DATE"],
+            )
+            if table_date_col is None:
+                raise ValueError(
+                    "Unable to resolve a date column in live table. "
+                    f"Tried: [{DATE_COL}, preadvice_date, DATE_DATE]."
+                )
+
+            logger.info(
+                "Applying lookback filter: %s >= '%s' (%d days)",
+                table_date_col,
+                cutoff_date,
+                TRAINING_LOOKBACK_DAYS,
+            )
+            spark_df = spark_df.filter(F.to_date(F.col(table_date_col)) >= F.lit(cutoff_date))
             df = spark_df.toPandas()
+
+            rename_candidates: dict[str, list[str]] = {
+                DATE_COL: [DATE_COL, "preadvice_date", "DATE_DATE"],
+                ACTUAL_COL: [ACTUAL_COL, "parcel_volume"],
+                BASELINE_COL: [BASELINE_COL, "median_4wk_volume"],
+                "is_china": ["is_china", "china_flag"],
+                "is_domestic": ["is_domestic", "domestic_flag"],
+            }
+            rename_map: dict[str, str] = {}
+            for target_col, candidates in rename_candidates.items():
+                if target_col in df.columns:
+                    continue
+                source_col = _find_case_insensitive_column(df.columns.tolist(), candidates)
+                if source_col is not None and source_col != target_col:
+                    rename_map[source_col] = target_col
+
+            if rename_map:
+                logger.info("Normalizing live table columns to training schema: %s", rename_map)
+                df = df.rename(columns=rename_map)
         except ImportError:
             raise RuntimeError("PySpark not available. Cannot read from Unity Catalog tables in local environment.")
     else:
