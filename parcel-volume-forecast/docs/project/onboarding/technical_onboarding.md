@@ -1,4 +1,4 @@
-# Parcel Volume Forecast — Technical Onboarding
+﻿# Parcel Volume Forecast â€” Technical Onboarding
 
 This document is the definitive structural architecture and onboarding reference for the `parcel-volume-forecast` repository. It is written for technical leads and quality architects who need a precise, repo-level understanding of the model pipeline, governance artifacts, and test contracts.
 
@@ -23,7 +23,7 @@ In this repo, quality engineering and ML model orchestration intersect along the
 - `tests/` hold the equivalent of software assertions that validate data and process contracts before any model promotion.
 - `src/training/train_xgboost.py` is the runtime executable that behaves like a production application entrypoint.
 - `MLflow` operates as the experiment-tracking analog of CI build history, where run IDs and metrics serve the same role as Jenkins build numbers and test results.
-- `jobs/train_job.yaml` defines the scheduled Databricks orchestration, so the repo’s training workflow is not manual exploration but an operationalized pipeline.
+- `jobs/train_job.yaml` defines the scheduled Databricks orchestration, so the repoâ€™s training workflow is not manual exploration but an operationalized pipeline.
 
 This makes the repo a hybrid between traditional Pytest-based QA and real ML pipeline delivery.
 
@@ -41,52 +41,52 @@ Trigger ownership rule:
 
 ### How the framework flows (end-to-end)
 
-The table below uses a representative test example for each step. In other words, the “Test file” column points to the relevant test module or the most representative test case for that stage, not to a single isolated assertion in every case.
+The table below uses a representative test example for each step. In other words, the â€œTest fileâ€ column points to the relevant test module or the most representative test case for that stage, not to a single isolated assertion in every case.
 
 Important: this is a conceptual map, not a literal runtime sequence where the training job calls pytest before starting. In this repo, the unit tests are normally run separately during local validation or CI. If they pass, the Databricks workflow can start. During the actual job run, the training script itself performs runtime data validation before training begins. So the test column shows the safety net for that stage, while the training script controls the live execution flow.
 
 | Step | What happens | Technical file | Governance file | Representative test(s) | Output |
 |---|---|---|---|---|---|
-| 1. Trigger | Databricks schedule or CLI call | `jobs/train_job.yaml` | `docs/project/runbook.md` | — | Job run starts |
-| 2. Load & validate data | Read CSV, check for nulls, negatives, baseline > 0 | `src/data/load_training_data.py`, `src/training/train_xgboost.py` (validation) | — | `tests/test_training.py` (for example `test_validate_input_dataframe_rejects_bad_values`) | Clean training data |
-| 3. Transform features | Build cyclical time features, compute uplift target | `src/features/time_features.py`, `src/features/target_transform.py` | — | `tests/test_target_transform.py` (for example `test_target_transform_roundtrip`) | Transformed features |
-| 4. Split & train | Split into train/val/test, train XGBoost | `src/training/train_xgboost.py` (split + train) | — | `tests/test_training.py` (for example `test_split_train_val_test_success`) | Trained model |
-| 5. Evaluate | Compute SMAPE on val and test | `src/evaluation/metrics.py`, `src/training/train_xgboost.py` | — | — | `test_smape_target`, `val_smape_target` |
-| 6. Compute process metrics | Measure baseline speed (≤2h), evaluation speed (≤24h), artifact completeness | `src/governance/cmmi_l5_metrics.py` | — | `tests/test_cmmi_l5_metrics.py` | CMMI gate flags |
-| 7. Log to MLflow | Record core metrics, params, model artifact, run ID | `src/training/train_xgboost.py` | — | — | MLflow run record |
-| 8. Generate run report artifacts | Build and publish `run_summary.json` and `run_summary.html` | `src/reporting/training_report.py`, `src/training/train_xgboost.py` | `docs/project/phase0_leadership_summary.md` | — | Structured run report |
-| 9. Decision gate | Check: SMAPE pass AND CMMI gates pass? | `src/governance/cmmi_l5_metrics.py` | `docs/project/phase0_leadership_summary.md` | — | **Pass / Reject** |
-| 10. Report status | Record go/no-go decision and rationale | — | `docs/project/decision_log.md` | — | Auditable decision |
-| 11. Optional: Dashboard | Query process metrics for trend analysis | — | `sql/cmmi_l5_process_metrics.sql` | — | Governance KPI view |
+| 1. Trigger | Databricks schedule or CLI call | `jobs/train_job.yaml` | `docs/project/operations/runbook.md` | â€” | Job run starts |
+| 2. Load & validate data | Read CSV, check for nulls, negatives, baseline > 0 | `src/data/load_training_data.py`, `src/training/train_xgboost.py` (validation) | â€” | `tests/test_training.py` (for example `test_validate_input_dataframe_rejects_bad_values`) | Clean training data |
+| 3. Transform features | Build cyclical time features, compute uplift target | `src/features/time_features.py`, `src/features/target_transform.py` | â€” | `tests/test_target_transform.py` (for example `test_target_transform_roundtrip`) | Transformed features |
+| 4. Split & train | Split into train/val/test, train XGBoost | `src/training/train_xgboost.py` (split + train) | â€” | `tests/test_training.py` (for example `test_split_train_val_test_success`) | Trained model |
+| 5. Evaluate | Compute SMAPE on val and test | `src/evaluation/metrics.py`, `src/training/train_xgboost.py` | â€” | â€” | `test_smape_target`, `val_smape_target` |
+| 6. Compute process metrics | Measure baseline speed (â‰¤2h), evaluation speed (â‰¤24h), artifact completeness | `src/governance/cmmi_l5_metrics.py` | â€” | `tests/test_cmmi_l5_metrics.py` | CMMI gate flags |
+| 7. Log to MLflow | Record core metrics, params, model artifact, run ID | `src/training/train_xgboost.py` | â€” | â€” | MLflow run record |
+| 8. Generate run report artifacts | Build and publish `run_summary.json` and `run_summary.html` | `src/reporting/training_report.py`, `src/training/train_xgboost.py` | `docs/project/records/decision_log.md` | â€” | Structured run report |
+| 9. Decision gate | Check: SMAPE pass AND CMMI gates pass? | `src/governance/cmmi_l5_metrics.py` | `docs/project/records/decision_log.md` | â€” | **Pass / Reject** |
+| 10. Report status | Record go/no-go decision and rationale | â€” | `docs/project/records/decision_log.md` | â€” | Auditable decision |
+| 11. Optional: Dashboard | Query process metrics for trend analysis | â€” | `sql/cmmi_l5_process_metrics.sql` | â€” | Governance KPI view |
 
 ### Files at a glance
 
 **Technical core (where the work happens):**
-- `src/data/` — data loading and validation
-- `src/features/` — transforms (time features, uplift target)
-- `src/training/` — training entrypoint and MLflow logging
-- `src/evaluation/` — metrics (SMAPE)
-- `jobs/` — production workflow definition
+- `src/data/` â€” data loading and validation
+- `src/features/` â€” transforms (time features, uplift target)
+- `src/training/` â€” training entrypoint and MLflow logging
+- `src/evaluation/` â€” metrics (SMAPE)
+- `jobs/` â€” production workflow definition
 
 **Governance layer (how we ensure quality):**
-- `src/governance/` — CMMI gate logic and process KPIs
-- `sql/` — governance KPI view for dashboards
-- `docs/project/runbook.md` — how to trigger and validate
-- `docs/project/decision_log.md` — decisions and rationale
-- `docs/project/phase*_leadership_summary.md` — phase status and go/no-go
+- `src/governance/` â€” CMMI gate logic and process KPIs
+- `sql/` â€” governance KPI view for dashboards
+- `docs/project/operations/runbook.md` â€” how to trigger and validate
+- `docs/project/records/decision_log.md` â€” decisions and rationale
+- `docs/project/records/decision_log.md` â€” phase status and go/no-go decisions
 
 **Safety net (tests that protect against regressions):**
-- `tests/test_target_transform.py` — ensures uplift target round-trips correctly
-- `tests/test_training.py` — ensures data validation and split logic work
-- `tests/test_cmmi_l5_metrics.py` — ensures gate logic is stable
+- `tests/test_target_transform.py` â€” ensures uplift target round-trips correctly
+- `tests/test_training.py` â€” ensures data validation and split logic work
+- `tests/test_cmmi_l5_metrics.py` â€” ensures gate logic is stable
 
 ### Key takeaways for junior engineers
 
 1. **Flow is deterministic:** same input CSV + code = same model and metrics every time.
 2. **Promotion is gated:** a run only becomes production if SMAPE passes AND process gates pass.
-3. **Every gate has a test:** transform, training split, gate logic — all have unit tests.
+3. **Every gate has a test:** transform, training split, gate logic â€” all have unit tests.
 4. **Auditability is built in:** MLflow run ID, metrics, CMMI evidence, and decision are all logged.
-5. **Governance is measurable:** not manual reviews, but automated gates with thresholds (SMAPE ≤ 15%, baseline speed ≤ 2h, etc.).
+5. **Governance is measurable:** not manual reviews, but automated gates with thresholds (SMAPE â‰¤ 15%, baseline speed â‰¤ 2h, etc.).
 
 ### How to debug if a run fails
 
@@ -105,58 +105,64 @@ Important: this is a conceptual map, not a literal runtime sequence where the tr
 ### Folder tree
 ```
 parcel-volume-forecast/
-├── .github/
-│   └── copilot-instructions.md
-├── data/
-│   └── multi_client_ib_uplift.csv
-├── docs/
-│   ├── ai-governance/
-│   │   ├── bias_risk_assessment.md
-│   │   ├── databricks_model_lineage.md
-│   │   ├── model_card.md
-│   │   └── steering/
-│   │       └── steering.md
-│   ├── archive/
-│   │   └── ... archived generic ML governance docs ...
-│   └── project/
-│       ├── decision_log.md
-│       ├── phase1_leadership_summary.md
-│       ├── repository_structure_cmmi_l5_guide.md
-│       ├── runbook.md
-│       └── technical_onboarding.md
-├── jobs/
-│   └── train_job.yaml
-├── mlruns_phase1/
-│   └── ... local MLflow run metadata ...
-├── notebooks/
-│   └── README.md
-├── PROJECT_SPEC.md
-├── README.md
-├── requirements-dev.txt
-├── sql/
-│   ├── cmmi_l5_process_metrics.sql
-│   └── serving_forecast_view.sql
-├── src/
-│   ├── data/
-│   │   └── load_training_data.py
-│   ├── evaluation/
-│   │   └── metrics.py
-│   ├── features/
-│   │   ├── target_transform.py
-│   │   └── time_features.py
-│   ├── governance/
-│   │   └── cmmi_l5_metrics.py
-│   └── training/
-│       └── train_xgboost.py
-├── tests/
-│   ├── test_cmmi_l5_metrics.py
-│   ├── test_target_transform.py
-│   └── test_training.py
-└── workflow/
-    └── requirements/
-        ├── 2026-06-23_phase-0-migration-mapping.md
-        ├── 2026-06-23_phase-1-scaffold-quick-win.md
-        └── 2026-06-24_stagewise-workflow-report.md
+â”œâ”€â”€ .github/
+â”‚   â””â”€â”€ copilot-instructions.md
+â”œâ”€â”€ data/
+â”‚   â””â”€â”€ multi_client_ib_uplift.csv
+â”œâ”€â”€ docs/
+â”‚   â”œâ”€â”€ ai-governance/
+â”‚   â”‚   â”œâ”€â”€ bias_risk_assessment.md
+â”‚   â”‚   â”œâ”€â”€ databricks_model_lineage.md
+â”‚   â”‚   â”œâ”€â”€ model_card.md
+â”‚   â”‚   â””â”€â”€ steering/
+â”‚   â”‚       â””â”€â”€ steering.md
+â”‚   â”œâ”€â”€ archive/
+â”‚   â”‚   â””â”€â”€ ... archived generic ML governance docs ...
+â”‚   â””â”€â”€ project/
+â”‚       â”œâ”€â”€ operations/
+â”‚       â”‚   â”œâ”€â”€ runbook.md
+â”‚       â”‚   â””â”€â”€ databricks_debug_reference.md
+â”‚       â”œâ”€â”€ onboarding/
+â”‚       â”‚   â”œâ”€â”€ technical_onboarding.md
+â”‚       â”‚   â””â”€â”€ repository_structure_cmmi_l5_guide.md
+â”‚       â”œâ”€â”€ records/
+â”‚       â”‚   â””â”€â”€ decision_log.md
+â”‚       â”œâ”€â”€ reference/
+â”‚       â”‚   â””â”€â”€ glossary.md
+â”‚       â””â”€â”€ README.md
+â”œâ”€â”€ jobs/
+â”‚   â””â”€â”€ train_job.yaml
+â”œâ”€â”€ mlruns_phase1/
+â”‚   â””â”€â”€ ... local MLflow run metadata ...
+â”œâ”€â”€ notebooks/
+â”‚   â””â”€â”€ README.md
+â”œâ”€â”€ PROJECT_SPEC.md
+â”œâ”€â”€ README.md
+â”œâ”€â”€ requirements-dev.txt
+â”œâ”€â”€ sql/
+â”‚   â”œâ”€â”€ cmmi_l5_process_metrics.sql
+â”‚   â””â”€â”€ serving_forecast_view.sql
+â”œâ”€â”€ src/
+â”‚   â”œâ”€â”€ data/
+â”‚   â”‚   â””â”€â”€ load_training_data.py
+â”‚   â”œâ”€â”€ evaluation/
+â”‚   â”‚   â””â”€â”€ metrics.py
+â”‚   â”œâ”€â”€ features/
+â”‚   â”‚   â”œâ”€â”€ target_transform.py
+â”‚   â”‚   â””â”€â”€ time_features.py
+â”‚   â”œâ”€â”€ governance/
+â”‚   â”‚   â””â”€â”€ cmmi_l5_metrics.py
+â”‚   â””â”€â”€ training/
+â”‚       â””â”€â”€ train_xgboost.py
+â”œâ”€â”€ tests/
+â”‚   â”œâ”€â”€ test_cmmi_l5_metrics.py
+â”‚   â”œâ”€â”€ test_target_transform.py
+â”‚   â””â”€â”€ test_training.py
+â””â”€â”€ workflow/
+    â””â”€â”€ requirements/
+        â”œâ”€â”€ 2026-06-23_phase-0-migration-mapping.md
+        â”œâ”€â”€ 2026-06-23_phase-1-scaffold-quick-win.md
+        â””â”€â”€ 2026-06-24_stagewise-workflow-report.md
 ```
 
 ## 3. DOMAIN GLOSSARY FOR JUNIOR ENGINEERS
@@ -206,19 +212,19 @@ This glossary defines the key terms used by the repository and the Databricks/ML
   - The behavioral and governance steering document for this repo.
   - Describes process rules, ML context, and CMMI-aligned controls.
 
-- `docs/project/decision_log.md`
+- `docs/project/records/decision_log.md`
   - Operational decision record for project-level choices.
   - Useful for retrospective analysis and evidence of decision rationale.
 
-- `docs/project/phase1_leadership_summary.md`
-  - Executive summary artifact for Phase 1 delivery status.
-  - Captures phase scope, outcomes, and governance evidence.
+- `docs/project/records/decision_log.md`
+  - Auditable checkpoint decisions and rationale.
+  - Captures go/no-go outcomes and governance evidence references.
 
-- `docs/project/repository_structure_cmmi_l5_guide.md`
+- `docs/project/onboarding/repository_structure_cmmi_l5_guide.md`
   - Project-specific architecture guide that maps repo structure to CMMI L5 controls.
   - Helps newcomers understand how folders correspond to governance artifacts.
 
-- `docs/project/runbook.md`
+- `docs/project/operations/runbook.md`
   - Operational runbook for local validation and Databricks execution.
   - Contains training trigger, validation checklist, and model promotion guidance.
 
@@ -291,8 +297,8 @@ This glossary defines the key terms used by the repository and the Databricks/ML
   - Confirms feature inference, input validation, and time-window partitioning.
 
 - `workflow/requirements/*.md`
-  - Approved requirements artifacts for the repo’s delivery phases.
-  - Capture the scope and evidence of this repository’s implementation decisions.
+  - Approved requirements artifacts for the repoâ€™s delivery phases.
+  - Capture the scope and evidence of this repositoryâ€™s implementation decisions.
 
 ## 3. THE CONTINUOUS TRAINING (CT) LIFE CYCLE & DATABRICKS WORKFLOW
 
@@ -354,7 +360,7 @@ This test file validates the governance gate logic encoded in `src/governance/cm
 
 #### Why it matters
 - It codifies process governance as an automated test rather than a manual review step.
-- It prevents regression in the repo’s process-quality gate logic.
+- It prevents regression in the repoâ€™s process-quality gate logic.
 - This is the explicit TMMi/CMMI Level 5 parallel: automated policy enforcement, where policy is defined in code and validated by tests.
 
 ### Data contract mechanics in the training pipeline
@@ -373,3 +379,4 @@ This repository is a disciplined ML delivery scaffold that bridges:
 - **Governance** via `docs/ai-governance/`, the `cmmi_l5_metrics` engine, and SQL KPI views.
 
 It is structured to support safe promotion of a model from exploratory notebook proof-of-concept into a repeatable and auditable training workflow.
+

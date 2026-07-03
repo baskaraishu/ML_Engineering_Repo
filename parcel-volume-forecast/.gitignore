@@ -5,6 +5,7 @@
 /exp-search-runs*.json
 /trigger-check.json
 /trigger-run.json
+/run-trigger.json
 
 # Local MLflow tracking outputs
 /mlruns/

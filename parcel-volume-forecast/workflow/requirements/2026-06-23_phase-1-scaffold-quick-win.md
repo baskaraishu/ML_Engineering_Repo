@@ -1,4 +1,4 @@
-# Requirements: Phase 1 Scaffold Quick Win
+﻿# Requirements: Phase 1 Scaffold Quick Win
 
 ## 1. Business Question
 How do we deliver a fast, low-risk Phase 1 migration from notebook-first forecasting to reproducible repository-based training and evaluation, while adopting CMMI Level 5 controls?
@@ -94,7 +94,7 @@ Phase 1 execution should use AI support for speed, while keeping human approval 
 
 7. Task: Update governance and operational records
 - Input: Final Phase 1 outputs and decisions.
-- AI-assisted output: Draft updates for `docs/project/decision_log.md`, `docs/project/runbook.md`, and impacted files under `docs/ai-governance/`.
+- AI-assisted output: Draft updates for `docs/project/records/decision_log.md`, `docs/project/operations/runbook.md`, and impacted files under `docs/ai-governance/`.
 - SENIOR ML Engineer persona review: Final reviewer approval before closeout.
 
 ## 10. Expected Exit Gate (Phase 1)
@@ -121,8 +121,8 @@ Phase 1 is complete only if all criteria below are met:
 - Gate decision is documented with rationale.
 
 5. Documentation Gate
-- `docs/project/decision_log.md` updated with Phase 1 outcome.
-- `docs/project/runbook.md` updated if execution steps changed.
+- `docs/project/records/decision_log.md` updated with Phase 1 outcome.
+- `docs/project/operations/runbook.md` updated if execution steps changed.
 - Governance docs updated when migration affects lineage/model evidence.
 - Leadership summary artifact created and linked from project docs.
 
@@ -149,7 +149,7 @@ Task progress for Section 9:
 5. Add and run quality checks: Completed (`pytest -q` passed: 2 passed)
 6. Produce gate evidence bundle: Completed (local MLflow run captured)
 7. Update governance and operational records: In progress (Phase 1 checkpoint entries updated in project docs)
-8. Create leadership-facing output artifact: Completed (`docs/project/phase1_leadership_summary.md`)
+8. Create leadership-facing output artifact: Completed (captured in `docs/project/records/decision_log.md`; standalone summary file retired)
 
 Evidence snapshot:
 - Local run id: `f9c245ca18e04fcf8d9c2a7977474ea5`
@@ -173,7 +173,7 @@ Exit-gate status snapshot (Section 10):
 
 ## 14. Leadership Output Artifact Specification
 Required artifact path:
-- `docs/project/phase1_leadership_summary.md`
+- `docs/project/records/decision_log.md`
 
 Minimum required sections:
 1. Executive Summary (Phase objective and current completion status)
