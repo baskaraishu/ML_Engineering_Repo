@@ -16,7 +16,7 @@ Purpose: this document captures every diagnosed failure mode encountered during 
 | `RESOURCE_NOT_FOUND` on task file | Job config | `python_file` path used Windows backslashes or pointed at YAML instead of `.py` | Use forward slashes; path is repo-relative e.g. `parcel-volume-forecast/src/training/train_xgboost.py` |
 | `NameError: name '__file__' is not defined` | Bootstrap | Databricks serverless executes scripts via `exec(compile(...))`, which does not set `__file__` | Bootstrap in `train_xgboost.py` uses `inspect.currentframe()` to resolve the repo root without relying on `__file__` |
 | `ModuleNotFoundError: No module named 'src'` | Bootstrap | Repo root not on `sys.path` in the Databricks execution context | `_resolve_project_root()` in `train_xgboost.py` walks parent dirs looking for `src/config.py` and inserts the root into `sys.path` |
-| `ModuleNotFoundError: No module named 'xgboost'` | Runtime import | `xgboost` is not pre-installed in Databricks serverless Jobs Compute v2 and was not declared in the job environment spec | Add `xgboost==3.3.0` to `environments[].spec.dependencies` in `jobs/job-587032785657077-reset.json`; apply with `databricks jobs reset` |
+| `ModuleNotFoundError: No module named 'xgboost'` | Runtime import | `xgboost` is not pre-installed in Databricks serverless Jobs Compute v2 and was not declared in the job environment spec | Add `xgboost==3.3.0` to `environments[].spec.dependencies` in `jobs/job-smoke-csv-reset.json`; apply with `databricks jobs reset` |
 | `FileNotFoundError: /dbfs/FileStore/forecasting/...` | Data load | Serverless Jobs Compute v2 does not mount `/dbfs/`; FUSE mount only exists on classic clusters | Upload CSV to Workspace (`databricks workspace import`) and pass `/Workspace/Shared/forecasting/...` as `--input-csv` |
 | `Workload failed, see run output for details` | Task | Generic wrapper — the real error is one layer down in task output | Fetch task-level run output (see inspection commands below) |
 
@@ -73,10 +73,10 @@ The `error` field contains the exception class and message. The `logs` field con
 databricks jobs get 587032785657077 --output json | ConvertFrom-Json | Select-Object -ExpandProperty settings | Select-Object -ExpandProperty environments
 ```
 
-Confirm `dependencies` includes `xgboost==3.3.0`. If not, update `jobs/job-587032785657077-reset.json` and re-apply:
+Confirm `dependencies` includes `xgboost==3.3.0`. If not, update `jobs/job-smoke-csv-reset.json` and re-apply:
 
 ```powershell
-databricks jobs reset --json "@jobs/job-587032785657077-reset.json"
+databricks jobs reset --json "@jobs/job-smoke-csv-reset.json"
 ```
 
 ### Step 5 — check DBFS/Workspace file presence (if FileNotFoundError)
@@ -142,10 +142,10 @@ Databricks serverless job constraints (job `587032785657077`):
 - Pre-installed in serverless v5: `mlflow`, `pandas`, `numpy`, `scipy`, `scikit-learn`.
 
 Environment reset procedure:
-- After modifying `jobs/job-587032785657077-reset.json`, apply changes with:
+- After modifying `jobs/job-smoke-csv-reset.json`, apply changes with:
 
 ```powershell
-databricks jobs reset --json "@jobs/job-587032785657077-reset.json"
+databricks jobs reset --json "@jobs/job-smoke-csv-reset.json"
 ```
 
 Authentication and runtime identity:
@@ -157,7 +157,7 @@ Authentication and runtime identity:
 
 ## Environment dependency management
 
-The live job declares extra packages in `jobs/job-587032785657077-reset.json`:
+The live job declares extra packages in `jobs/job-smoke-csv-reset.json`:
 
 ```json
 "environments": [
@@ -175,8 +175,8 @@ The live job declares extra packages in `jobs/job-587032785657077-reset.json`:
 
 To add a new package (e.g. for a future phase):
 1. Add the package to `requirements-dev.txt` (keeps local and remote in sync).
-2. Add the same package string to `dependencies` in `jobs/job-587032785657077-reset.json`.
-3. Apply: `databricks jobs reset --json "@jobs/job-587032785657077-reset.json"`.
+2. Add the same package string to `dependencies` in `jobs/job-smoke-csv-reset.json`.
+3. Apply: `databricks jobs reset --json "@jobs/job-smoke-csv-reset.json"`.
 4. Re-trigger the job and verify the new import no longer fails.
 
 ---
@@ -185,18 +185,16 @@ To add a new package (e.g. for a future phase):
 
 ```powershell
 # Production run — uses job default parameters
-'{ "job_id": 587032785657077 }' | Out-File -Encoding ascii run-trigger.json
-databricks jobs run-now --json "@run-trigger.json"
+databricks jobs run-now 587032785657077
 
 # Debug run — override parameters
-'{"job_id":587032785657077,"python_params":["--input-csv","/Workspace/Shared/forecasting/multi_client_ib_uplift.csv","--dataset-version","v1","--run-mode","debug"]}' | Out-File -Encoding ascii run-trigger.json
-databricks jobs run-now --json "@run-trigger.json"
+databricks jobs run-now --json '{"job_id":587032785657077,"python_params":["--input-csv","/Workspace/Shared/forecasting/multi_client_ib_uplift.csv","--dataset-version","v1","--run-mode","debug"]}'
 
 # Apply a job config reset
-databricks jobs reset --json "@jobs/job-587032785657077-reset.json"
+databricks jobs reset --json "@jobs/job-smoke-csv-reset.json"
 ```
 
-Note: `databricks jobs run-now --job-id` flag does not exist. Always use `--json`.
+Note: `databricks jobs run-now` supports a positional `JOB_ID`; use `--json` only when you need parameter overrides.
 
 ---
 
