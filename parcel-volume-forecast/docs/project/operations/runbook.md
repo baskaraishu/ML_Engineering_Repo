@@ -109,7 +109,7 @@ The training script supports both CSV file and Unity Catalog table inputs. Two j
 - Use when: you have static training data or want to control exactly which data is used
 - Setup: upload CSV file once with `databricks workspace import` (see command below)
 
-**Live table job** (`jobs/job-587032785657077-live-data.json`)
+**Live table job** (`jobs/job-live-table-reset.json`)
 - Reads training data directly from Unity Catalog table
 - Input: `forecasting_prod.landing.multi_client_ib_uplift` (table name)
 - Use when: you have a live data pipeline and want automatic data freshness
@@ -117,7 +117,7 @@ The training script supports both CSV file and Unity Catalog table inputs. Two j
 - Advantage: no manual data uploads needed; data is fresh from upstream pipeline
 
 To switch jobs:
-1. Apply the desired job configuration: `databricks jobs reset --job-id 587032785657077 --json @jobs/job-smoke-csv-reset.json` (CSV) or `databricks jobs reset --job-id 587032785657077 --json @jobs/job-587032785657077-live-data.json` (live table)
+1. Apply the desired job configuration: `databricks jobs reset --job-id 587032785657077 --json @jobs/job-smoke-csv-reset.json` (CSV) or `databricks jobs reset --job-id 587032785657077 --json @jobs/job-live-table-reset.json` (live table)
 2. Verify configuration in Databricks Workflows UI
 3. Test with a manual run before relying on scheduled runs
 

@@ -24,7 +24,15 @@ MIN_CLIENT_MEDIAN_VOLUME: int = 10
 # Phase 0: centralize runtime table names so they are not hardcoded in
 # orchestration code. Local/preflight runs may use these defaults.
 # ---------------------------------------------------------------------------
-DEFAULT_SOURCE_TABLE: str = "evri_datalakehouse_prod_catalog.analytics_sandbox.fcast_multi_client_data_build_champion_ib_uplift"
+# Single runtime switch for training input mode.
+# Supported values: "csv" or "live_table".
+DEFAULT_INPUT_SOURCE_MODE: str = "csv"
+
+# CSV default used when DEFAULT_INPUT_SOURCE_MODE == "csv" and no
+# --input-csv override is provided.
+DEFAULT_SOURCE_CSV_PATH: str = "data/multi_client_ib_uplift.csv"
+
+DEFAULT_SOURCE_TABLE: str = "forecasting_prod.landing.multi_client_ib_uplift"
 SOURCE_TABLE_ENV_VAR: str = "PARCEL_FORECAST_SOURCE_TABLE"
 
 # ---------------------------------------------------------------------------
