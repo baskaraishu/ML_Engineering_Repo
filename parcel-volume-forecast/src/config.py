@@ -36,7 +36,7 @@ DEFAULT_INPUT_SOURCE_MODE: str = "csv"
 # --input-csv override is provided.
 DEFAULT_SOURCE_CSV_PATH: str = "data/multi_client_ib_uplift.csv"
 
-DEFAULT_SOURCE_TABLE: str = "evri_datalakehouse_prod_catalog.analytics_sandbox.fcast_multi_client_data_build_champion_ib_uplift"
+DEFAULT_SOURCE_TABLE: str = "evri_datalakehouse_prod_catalog.analytics_sandbox.fcast_multi_client_data_build_champion_modelv35"
 SOURCE_TABLE_ENV_VAR: str = "PARCEL_FORECAST_SOURCE_TABLE"
 
 # Number of calendar days of history to pull when reading from a live table.
