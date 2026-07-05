@@ -21,6 +21,40 @@ Runtime source parameter rule (Phase 0):
 
 ## Recommended operating flow
 
+### When to use the staged refinery path
+
+Use the new Stage 2/Stage 3 refinery path whenever the training input comes from a live Unity Catalog table or another large, operational source. This is the default expectation for production training because it keeps the row-level contract explicit and prevents invalid rows from reaching the model.
+
+Use the simpler CSV path when:
+- you are doing a quick local smoke test,
+- you need deterministic fixture data for debugging, or
+- the input file is small and already curated.
+
+Use the live-table refinery path when:
+- the source is a Databricks table with production freshness requirements,
+- the dataset may contain sparse or noisy rows,
+- you need guardrail evidence for governance review, or
+- you want the pipeline to fail fast before training on a bad slice.
+
+### What the refinery stages do
+
+- Stage 2 enforces the required column contract, temporal cutoff, non-null checks, non-null target insulation, and positive baseline filter before data reaches pandas/XGBoost.
+- Stage 3 evaluates the resulting row volume against the approved guardrail envelope and returns one of three outcomes: nominal success, approved deviation, or hard failure.
+
+### Guardrail outcomes and operator action
+
+- Nominal operation: drop fraction is at or below 2% and the run continues normally.
+- Approved deviation: the slice is still above the minimum acceptable volume but inside the approved tolerance envelope; log the governance warning and continue only if the business owner accepts the risk.
+- Hard breach: the slice falls below the minimum row fraction or exceeds the maximum allowed drop fraction; stop the run and escalate the data issue.
+
+### Practical guidance for local and Databricks runs
+
+- For local smoke tests, prefer the CSV path unless you are explicitly validating the live-table contract.
+- For Databricks production runs, use the live-table path only after confirming the source table has the expected columns and values.
+- If the run logs a governance warning, review the volume drop in the training run report and decide whether the live-table source still meets the operational contract.
+- If the run fails with a Stage 3 error, treat it as a data-quality incident and investigate the upstream source before retrying.
+
+
 Use the steps below in order:
 
 1. Run the tests first (validation gate)

@@ -19,6 +19,7 @@ Purpose: this document captures every diagnosed failure mode encountered during 
 | `ModuleNotFoundError: No module named 'xgboost'` | Runtime import | `xgboost` is not pre-installed in Databricks serverless Jobs Compute v2 and was not declared in the job environment spec | Add `xgboost==3.3.0` to `environments[].spec.dependencies` in `jobs/job-smoke-csv-reset.json`; apply with `databricks jobs reset` |
 | `FileNotFoundError: /dbfs/FileStore/forecasting/...` | Data load | Serverless Jobs Compute v2 does not mount `/dbfs/`; FUSE mount only exists on classic clusters | Upload CSV to Workspace (`databricks workspace import`) and pass `/Workspace/Shared/forecasting/...` as `--input-csv` |
 | `Workload failed, see run output for details` | Task | Generic wrapper — the real error is one layer down in task output | Fetch task-level run output (see inspection commands below) |
+| `Stage 3 guardrail failed for live-table input` | Data contract | The refined training slice dropped below the approved volume envelope | Investigate the source table and the filter contract in `src/training/refinery.py`; confirm the live-table data still satisfies the required column and row-volume thresholds before retrying |
 
 ---
 
@@ -118,7 +119,10 @@ python -m src.training.train_xgboost --input-csv data/multi_client_ib_uplift.csv
   - Root cause: missing required columns or invalid values (null/non-negative constraints).
   - Check validation rules in `src/training/data_validation.py`.
   - Confirm required input columns and value quality in the CSV before rerun.
-
+4. Refinery guardrail failure
+  - Root cause: the live-table slice dropped below the approved row-volume envelope or failed the strict null-target contract.
+  - Check the Stage 2/Stage 3 logic in `src/training/refinery.py` and the guardrail values in `src/config.py`.
+  - Review the source table row counts and the required columns (`preadvice_date`, `parcel_volume`, `median_4wk_volume`, `target`) before retrying.
 3. Missing report artifacts (`run_summary.json`, `run_summary.html`)
   - Root cause: training report generation failed or artifact logging path issue.
   - Check report generation helpers in `src/reporting/training_report.py`.
