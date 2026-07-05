@@ -63,6 +63,17 @@ def _get_refinery_manifest() -> dict[str, Any]:
     }
 
 
+def _resolve_column_name(columns: list[str], aliases: list[str]) -> str | None:
+    """Resolve a column name from either the raw live-table schema or the normalized training schema."""
+
+    normalized_columns = {column.lower(): column for column in columns}
+    for alias in aliases:
+        resolved = normalized_columns.get(alias.lower())
+        if resolved is not None:
+            return resolved
+    return None
+
+
 def apply_refinery_filters_to_pandas(df: pd.DataFrame) -> pd.DataFrame:
     """Apply the Stage 2 contract to a pandas frame.
 
@@ -74,27 +85,27 @@ def apply_refinery_filters_to_pandas(df: pd.DataFrame) -> pd.DataFrame:
     manifest = _get_refinery_manifest()
     column_map = manifest["column_map"]
     filters = manifest["push_down_filters"]
-    required_columns = {
-        column_map["date"]["source"],
-        column_map["volume"]["source"],
-        column_map["baseline"]["source"],
-        column_map["target"]["source"],
-        column_map["china"]["source"],
-        column_map["domestic"]["source"],
-    }
 
-    available_columns = set(df.columns)
-    missing_columns = required_columns - available_columns
-    if missing_columns:
-        raise ValueError(f"Missing required refinery columns: {sorted(missing_columns)}")
+    resolved_columns = {}
+    for field, mapping in column_map.items():
+        aliases = [mapping["source"], mapping["target"]]
+        resolved = _resolve_column_name(df.columns.tolist(), aliases)
+        if resolved is None:
+            raise ValueError(
+                f"Missing required refinery columns: expected one of {aliases}"
+            )
+        resolved_columns[field] = resolved
 
-    candidate = df.loc[:, list(required_columns)].copy()
-    candidate[DATE_COL] = pd.to_datetime(candidate[column_map["date"]["source"]], errors="coerce")
-    candidate[ACTUAL_COL] = pd.to_numeric(candidate[column_map["volume"]["source"]], errors="coerce")
-    candidate[BASELINE_COL] = pd.to_numeric(candidate[column_map["baseline"]["source"]], errors="coerce")
-    candidate[TARGET_COL] = pd.to_numeric(candidate[column_map["target"]["source"]], errors="coerce")
-    candidate["is_china"] = pd.to_numeric(candidate[column_map["china"]["source"]], errors="coerce")
-    candidate["is_domestic"] = pd.to_numeric(candidate[column_map["domestic"]["source"]], errors="coerce")
+    candidate = pd.DataFrame(
+        {
+            DATE_COL: pd.to_datetime(df[resolved_columns["date"]], errors="coerce"),
+            ACTUAL_COL: pd.to_numeric(df[resolved_columns["volume"]], errors="coerce"),
+            BASELINE_COL: pd.to_numeric(df[resolved_columns["baseline"]], errors="coerce"),
+            TARGET_COL: pd.to_numeric(df[resolved_columns["target"]], errors="coerce"),
+            "is_china": pd.to_numeric(df[resolved_columns["china"]], errors="coerce"),
+            "is_domestic": pd.to_numeric(df[resolved_columns["domestic"]], errors="coerce"),
+        }
+    )
 
     cutoff = datetime.now().date() - timedelta(days=filters["lookback_days"])
     filtered = candidate[
@@ -105,17 +116,6 @@ def apply_refinery_filters_to_pandas(df: pd.DataFrame) -> pd.DataFrame:
         & (candidate[BASELINE_COL] > filters["min_baseline_volume"])
         & (candidate[DATE_COL] >= pd.Timestamp(cutoff))
     ].copy()
-
-    filtered = filtered.rename(
-        columns={
-            DATE_COL: DATE_COL,
-            ACTUAL_COL: ACTUAL_COL,
-            BASELINE_COL: BASELINE_COL,
-            TARGET_COL: TARGET_COL,
-            "is_china": "is_china",
-            "is_domestic": "is_domestic",
-        }
-    )
 
     return filtered[[DATE_COL, ACTUAL_COL, BASELINE_COL, TARGET_COL, "is_china", "is_domestic"]]
 

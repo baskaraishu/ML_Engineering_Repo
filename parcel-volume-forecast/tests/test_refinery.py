@@ -61,3 +61,29 @@ def test_apply_refinery_filters_to_pandas_enforces_contract():
     assert len(filtered) == 1
     assert filtered.iloc[0]["event_date"] == today - pd.Timedelta(days=2)
     assert filtered.iloc[0]["rolling_4w_median"] == 20.0
+
+
+def test_apply_refinery_filters_to_pandas_accepts_normalized_columns():
+    today = pd.Timestamp.today().normalize()
+    df = pd.DataFrame(
+        {
+            "event_date": [today - pd.Timedelta(days=2), today - pd.Timedelta(days=1)],
+            "actual_volume": [100.0, 150.0],
+            "rolling_4w_median": [20.0, 15.0],
+            "target": [1.0, 0.5],
+            "is_china": [0, 1],
+            "is_domestic": [1, 0],
+        }
+    )
+
+    filtered = apply_refinery_filters_to_pandas(df)
+
+    assert list(filtered.columns) == [
+        "event_date",
+        "actual_volume",
+        "rolling_4w_median",
+        "target",
+        "is_china",
+        "is_domestic",
+    ]
+    assert len(filtered) == 2
