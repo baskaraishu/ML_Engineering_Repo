@@ -39,7 +39,7 @@ def test_apply_refinery_filters_to_pandas_enforces_contract():
     today = pd.Timestamp.today().normalize()
     df = pd.DataFrame(
         {
-            "preadvice_date": [today - pd.Timedelta(days=2), today - pd.Timedelta(days=1), None, today - pd.Timedelta(days=400)],
+            "preadvice_date": [today - pd.Timedelta(days=2), today - pd.Timedelta(days=1), None, today - pd.Timedelta(days=800)],
             "parcel_volume": [100.0, None, 200.0, 150.0],
             "median_4wk_volume": [20.0, 15.0, 5.0, 12.0],
             "target": [1.0, 0.5, 0.2, 0.8],

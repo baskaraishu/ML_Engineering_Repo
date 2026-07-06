@@ -41,13 +41,21 @@ SOURCE_TABLE_ENV_VAR: str = "PARCEL_FORECAST_SOURCE_TABLE"
 
 # Number of calendar days of history to pull when reading from a live table.
 # Prevents OOM when the full table is larger than driver memory.
-# Must exceed VAL_DAYS + TEST_DAYS (84) to leave training data; 365 is default.
-TRAINING_LOOKBACK_DAYS: int = 365
+# Must exceed VAL_DAYS + TEST_DAYS (84) to leave training data.
+# 730 days (2 full annual cycles) is preferred so XGBoost sees each seasonal
+# pattern twice — Christmas, Easter, and bank-holiday splits are more robust
+# when the model has seen the same calendar position in two different years.
+TRAINING_LOOKBACK_DAYS: int = 730
 
 # ---------------------------------------------------------------------------
 # Refinery guardrail defaults
+# Recalibrate REFINERY_EXPECTED_ROW_COUNT when the source table or lookback
+# window changes.  Derivation: observe valid_rows from the first successful
+# live-table run and set this to that value.
+# 2026-07-06 calibration: 365-day window → ~572K valid rows; 730-day window
+# (current) → ~1.14M rows (estimated as 2× the 365-day count).
 # ---------------------------------------------------------------------------
-REFINERY_EXPECTED_ROW_COUNT: int = 124506
+REFINERY_EXPECTED_ROW_COUNT: int = 1_100_000
 REFINERY_MIN_ROW_FRACTION: float = 0.50
 REFINERY_MAX_DROP_FRACTION: float = 0.92
 REFINERY_NOMINAL_DROP_FRAC: float = 0.02
