@@ -17,7 +17,9 @@ def infer_feature_columns(df: pd.DataFrame, cfg: TrainConfig) -> list[str]:
 
     feature_cols = [
         c for c in df.columns
-        if c.endswith("_sin") or c.endswith("_cos") or c in ["is_china", "is_domestic"]
+        if c.endswith("_sin") or c.endswith("_cos")
+        or c in ["is_china", "is_domestic"]
+        or c.startswith("event_")
     ]
     if not feature_cols:
         raise ValueError(

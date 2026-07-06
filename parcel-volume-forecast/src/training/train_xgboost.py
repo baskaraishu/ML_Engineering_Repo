@@ -342,18 +342,38 @@ def _load_training_data(input_source: str) -> pd.DataFrame:
                 else:
                     select_exprs.append(F.lit(0).alias(flag_col))
 
+            # Collect event feature columns from the live table (e.g.
+            # event_black_friday, event_christmas_day, event_eng_bank_holiday).
+            # These binary calendar signals give the model explicit event-period
+            # signal that cyclical features cannot capture precisely.
+            # Exclude the 'events' ARRAY column — it cannot be cast to a scalar.
+            event_feature_cols = [
+                c for c in spark_df.columns
+                if c.lower().startswith("event_") and c.lower() != "events"
+            ]
+            for ec in event_feature_cols:
+                select_exprs.append(F.col(ec))
+            if event_feature_cols:
+                logger.info("Including %d event feature columns from live table", len(event_feature_cols))
+
+            today_str = datetime.now().strftime("%Y-%m-%d")
             spark_df = (
                 spark_df
                 .select(*select_exprs)
+                # Lower bound: only include rows within the training lookback window.
                 .filter(F.to_date(F.col(DATE_COL)) >= F.lit(cutoff_date))
+                # Upper bound: exclude future rows where parcel_volume=0 because
+                # the event has not occurred yet.  Future rows corrupt the test
+                # split and produce extreme log-uplift targets (~log(1e-6)=-13.8).
+                .filter(F.to_date(F.col(DATE_COL)) <= F.lit(today_str))
                 .filter(F.col(DATE_COL).isNotNull())
                 .filter(F.col(ACTUAL_COL).isNotNull())
+                # Exclude zero-volume rows: log(0/baseline) is undefined and is
+                # clipped to log(1e-6)=-13.8, which severely biases the model.
+                .filter(F.col(ACTUAL_COL).cast("double") > 0)
                 .filter(F.col(BASELINE_COL).isNotNull())
                 # TARGET_COL is excluded from the null filter: it is overwritten
-                # by build_uplift_target() in run_training() and must not be used
-                # to gate row inclusion here.  Rows with a null pre-computed
-                # uplift_target in the live table are still valid if actual_volume
-                # and baseline_volume are present.
+                # by build_uplift_target() in run_training().
                 .filter(F.col(BASELINE_COL).cast("double") > MIN_CLIENT_MEDIAN_VOLUME)
             )
             df = spark_df.toPandas()
@@ -370,6 +390,13 @@ def _load_training_data(input_source: str) -> pd.DataFrame:
     filtered_df = apply_refinery_filters_to_pandas(df)
     if filtered_df.empty:
         raise ValueError(f"Refinery filters removed all rows from {input_source}.")
+
+    # Merge event feature columns back from pre-refinery df by index.
+    # The refinery returns only the 6 canonical schema columns; event columns
+    # are preserved separately so they are available to infer_feature_columns().
+    event_passthrough = [c for c in df.columns if c.startswith("event_")]
+    if event_passthrough:
+        filtered_df = filtered_df.join(df[event_passthrough].fillna(0).astype("int8"))
 
     if is_table:
         guardrail = evaluate_refinery_guardrail(
