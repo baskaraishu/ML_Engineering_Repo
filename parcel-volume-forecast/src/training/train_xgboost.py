@@ -396,7 +396,13 @@ def _load_training_data(input_source: str) -> pd.DataFrame:
     # are preserved separately so they are available to infer_feature_columns().
     event_passthrough = [c for c in df.columns if c.startswith("event_")]
     if event_passthrough:
-        filtered_df = filtered_df.join(df[event_passthrough].fillna(0).astype("int8"))
+        # Use pd.to_numeric(errors='coerce') so any column that arrives as a
+        # non-numeric type (e.g. datetime.date from certain Spark INT columns)
+        # is coerced to NaN and then filled to 0 rather than raising TypeError.
+        event_df = df[event_passthrough].apply(
+            lambda s: pd.to_numeric(s, errors="coerce").fillna(0).astype("int8")
+        )
+        filtered_df = filtered_df.join(event_df)
 
     if is_table:
         guardrail = evaluate_refinery_guardrail(
