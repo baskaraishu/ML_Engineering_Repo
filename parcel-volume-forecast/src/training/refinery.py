@@ -37,6 +37,7 @@ class RefineryGuardrailResult:
     drop_frac: float
     valid_rows: int
     expected_row_count: int
+    workflow_impact_flag: str | None = None
 
 
 def _get_refinery_manifest() -> dict[str, Any]:
@@ -138,6 +139,7 @@ def evaluate_refinery_guardrail(valid_rows: int, expected_row_count: int) -> Ref
             drop_frac=drop_frac,
             valid_rows=valid_rows,
             expected_row_count=expected_row_count,
+            workflow_impact_flag="ZONE_3_CRITICAL_REJECTION",
         )
 
     if drop_frac > guardrail["max_drop_fraction"]:
@@ -147,6 +149,7 @@ def evaluate_refinery_guardrail(valid_rows: int, expected_row_count: int) -> Ref
             drop_frac=drop_frac,
             valid_rows=valid_rows,
             expected_row_count=expected_row_count,
+            workflow_impact_flag="ZONE_3_CRITICAL_REJECTION",
         )
 
     if drop_frac <= guardrail["nominal_drop_frac"]:
@@ -156,6 +159,7 @@ def evaluate_refinery_guardrail(valid_rows: int, expected_row_count: int) -> Ref
             drop_frac=drop_frac,
             valid_rows=valid_rows,
             expected_row_count=expected_row_count,
+            workflow_impact_flag="ZONE_1_NOMINAL",
         )
 
     return RefineryGuardrailResult(
@@ -164,4 +168,5 @@ def evaluate_refinery_guardrail(valid_rows: int, expected_row_count: int) -> Ref
         drop_frac=drop_frac,
         valid_rows=valid_rows,
         expected_row_count=expected_row_count,
+        workflow_impact_flag="ZONE_2_DEVIATION_WARNING",
     )

@@ -53,6 +53,25 @@ REFINERY_MAX_DROP_FRACTION: float = 0.92
 REFINERY_NOMINAL_DROP_FRAC: float = 0.02
 
 # ---------------------------------------------------------------------------
+# Operational archetype thresholds for Stage 3 promotion gating
+# Values are tuned to warehouse workflow tolerance by cohort:
+# - Anchors: strict, depot staffing-critical accounts
+# - Dials: moderate, contractual schedule-balancing accounts
+# - Spikers: wider tolerance, high-volatility surge accounts
+# - Phantoms: loose tolerance, low-volume noisy long tail
+# ---------------------------------------------------------------------------
+MAX_ANCHOR_SMAPE: float = 7.5
+MAX_DIAL_SMAPE: float = 13.0
+MAX_SPIKER_SMAPE: float = 24.0
+MAX_PHANTOM_SMAPE: float = 32.0
+
+# Cohort cut points used to map rows into operational client archetypes.
+ARCHETYPE_HIGH_VOLUME_QUANTILE: float = 0.75
+ARCHETYPE_LOW_VOLUME_QUANTILE: float = 0.35
+ARCHETYPE_LOW_PREDICTABILITY_QUANTILE: float = 0.65
+ARCHETYPE_HIGH_PREDICTABILITY_QUANTILE: float = 0.35
+
+# ---------------------------------------------------------------------------
 # Train / validation / test split
 # Number of calendar days reserved for each held-out window.
 # ---------------------------------------------------------------------------

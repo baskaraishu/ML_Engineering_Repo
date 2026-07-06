@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 """Utilities to build and persist training run reports."""
 
@@ -16,18 +16,27 @@ def build_training_run_report(
     model_name: str,
     test_smape_target: float,
     val_smape_target: float,
+    test_smape_volume: float,
+    val_smape_volume: float,
     cmmi_hours_to_baseline: float,
     cmmi_hours_to_evaluation: float,
     cmmi_artifact_completeness: float,
     cmmi_gates: dict[str, bool],
+    promotion_recommendation: bool,
+    promotion_gate_metric: str,
+    promotion_gate_threshold: float,
+    promotion_gate_value: float,
+    promotion_block_reason: str,
+    archetype_stage3_ledger: list[dict],
+    config_snapshot: dict,
     smape_threshold: float,
     cmmi_max_baseline_hours: float,
     cmmi_max_eval_hours: float,
 ) -> dict:
     """Build a report payload aligned to the Phase 0 leadership structure."""
-    quality_pass = test_smape_target <= smape_threshold
+    quality_pass = promotion_gate_value <= promotion_gate_threshold
     cmmi_pass = all(cmmi_gates.values())
-    recommendation = "pass" if (quality_pass and cmmi_pass) else "reject"
+    recommendation = "pass" if (promotion_recommendation and cmmi_pass) else "reject"
     now_utc = datetime.now(timezone.utc).isoformat()
 
     stage_execution_summary = [
@@ -59,7 +68,10 @@ def build_training_run_report(
             "step": 5,
             "stage": "Evaluate",
             "status": "Pass" if quality_pass else "Partial",
-            "evidence": f"test_smape_target={test_smape_target:.4f}, val_smape_target={val_smape_target:.4f}",
+            "evidence": (
+                f"test_smape_target={test_smape_target:.4f}, val_smape_target={val_smape_target:.4f}, "
+                f"test_smape_volume={test_smape_volume:.4f}, val_smape_volume={val_smape_volume:.4f}"
+            ),
         },
         {
             "step": 6,
@@ -88,7 +100,10 @@ def build_training_run_report(
         },
         "quality": {
             "status": "Pass" if quality_pass else "Partial",
-            "rationale": f"Quality gate uses test_smape_target <= {smape_threshold}.",
+            "rationale": (
+                f"Primary gate uses {promotion_gate_metric} <= {promotion_gate_threshold}. "
+                f"Observed={promotion_gate_value:.4f}."
+            ),
         },
         "cmmi_process": {
             "status": "Pass" if cmmi_pass else "Partial",
@@ -121,6 +136,7 @@ def build_training_run_report(
         "key_metrics": {
             "thresholds": {
                 "max_test_smape_percent": smape_threshold,
+                "primary_promotion_gate_threshold": promotion_gate_threshold,
                 "cmmi_max_baseline_hours": cmmi_max_baseline_hours,
                 "cmmi_max_evaluation_hours": cmmi_max_eval_hours,
                 "cmmi_artifact_completeness_required": 1.0,
@@ -128,6 +144,8 @@ def build_training_run_report(
             "performance": {
                 "test_smape_target": test_smape_target,
                 "val_smape_target": val_smape_target,
+                "test_smape_volume": test_smape_volume,
+                "val_smape_volume": val_smape_volume,
             },
             "cmmi": {
                 "cmmi_hours_to_baseline": cmmi_hours_to_baseline,
@@ -135,6 +153,14 @@ def build_training_run_report(
                 "cmmi_artifact_completeness": cmmi_artifact_completeness,
             },
         },
+        "operational_archetype_briefing": archetype_stage3_ledger,
+        "promotion_context": {
+            "promotion_gate_metric": promotion_gate_metric,
+            "promotion_gate_threshold": promotion_gate_threshold,
+            "promotion_gate_value": promotion_gate_value,
+            "promotion_block_reason": promotion_block_reason,
+        },
+        "config_snapshot": config_snapshot,
         "stage_execution_summary": stage_execution_summary,
         "cmmi_gate_snapshot": gate_snapshot,
         "gates": {
@@ -146,7 +172,10 @@ def build_training_run_report(
         },
         "recommendation": {
             "promotion_recommendation": recommendation,
-            "explanation": "pass if quality and all CMMI gates pass; otherwise reject",
+            "explanation": (
+                "pass if operational primary gate and all CMMI gates pass; "
+                "otherwise reject"
+            ),
         },
     }
 
@@ -165,6 +194,9 @@ def write_training_run_artifacts(report: dict, output_dir: Path) -> tuple[Path, 
     cmmi = key_metrics["cmmi"]
     thresholds = key_metrics["thresholds"]
     gates = report["gates"]
+    promotion_context = report.get("promotion_context", {})
+    archetype_briefing = report.get("operational_archetype_briefing", [])
+    config_snapshot = report.get("config_snapshot", {})
 
     stage_rows = "".join(
         f"<tr><td>{s['step']}</td><td>{s['stage']}</td><td>{s['status']}</td><td>{s['evidence']}</td></tr>"
@@ -176,6 +208,22 @@ def write_training_run_artifacts(report: dict, output_dir: Path) -> tuple[Path, 
         f"<tr><td>{name.replace('_', ' ').title()}</td><td>{details['status']}</td><td>{details['rationale']}</td></tr>"
         for name, details in gate.items()
     )
+
+    archetype_rows = ""
+    for row in archetype_briefing:
+        business_smape = row.get("business_smape")
+        business_smape_text = "NA" if business_smape is None else f"{float(business_smape):.4f}"
+        archetype_rows += (
+            "<tr>"
+            f"<td>{row.get('archetype', 'NA')}</td>"
+            f"<td>{row.get('row_count', 0)}</td>"
+            f"<td>{business_smape_text}</td>"
+            f"<td>{row.get('threshold', 'NA')}</td>"
+            f"<td>{row.get('workflow_impact_flag', 'NA')}</td>"
+            "</tr>"
+        )
+
+    config_snapshot_json = json.dumps(config_snapshot, indent=2)
 
     html = f"""<!doctype html>
 <html lang=\"en\">
@@ -205,10 +253,29 @@ def write_training_run_artifacts(report: dict, output_dir: Path) -> tuple[Path, 
   <div class=\"grid\">
     <div class=\"card\"><strong>test_smape_target</strong><br />{perf['test_smape_target']:.4f}</div>
     <div class=\"card\"><strong>val_smape_target</strong><br />{perf['val_smape_target']:.4f}</div>
+    <div class=\"card\"><strong>test_smape_volume</strong><br />{perf.get('test_smape_volume', float('nan')):.4f}</div>
+    <div class=\"card\"><strong>val_smape_volume</strong><br />{perf.get('val_smape_volume', float('nan')):.4f}</div>
     <div class=\"card\"><strong>cmmi_hours_to_baseline</strong><br />{cmmi['cmmi_hours_to_baseline']:.4f}</div>
     <div class=\"card\"><strong>cmmi_hours_to_evaluation</strong><br />{cmmi['cmmi_hours_to_evaluation']:.4f}</div>
     <div class=\"card\"><strong>cmmi_artifact_completeness</strong><br />{cmmi['cmmi_artifact_completeness']:.1f}</div>
   </div>
+
+  <h2>Operational Archetype Briefing</h2>
+  <table>
+    <thead><tr><th>Archetype</th><th>Rows</th><th>Business SMAPE</th><th>Threshold</th><th>Workflow Impact</th></tr></thead>
+    <tbody>{archetype_rows}</tbody>
+  </table>
+
+  <h2>Promotion Context</h2>
+  <table>
+    <thead><tr><th>Field</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>promotion_gate_metric</td><td>{promotion_context.get('promotion_gate_metric', 'NA')}</td></tr>
+      <tr><td>promotion_gate_threshold</td><td>{promotion_context.get('promotion_gate_threshold', 'NA')}</td></tr>
+      <tr><td>promotion_gate_value</td><td>{promotion_context.get('promotion_gate_value', 'NA')}</td></tr>
+      <tr><td>promotion_block_reason</td><td>{promotion_context.get('promotion_block_reason', 'None')}</td></tr>
+    </tbody>
+  </table>
 
   <h2>Stage Execution Summary</h2>
   <table>
@@ -225,13 +292,16 @@ def write_training_run_artifacts(report: dict, output_dir: Path) -> tuple[Path, 
   <table>
     <thead><tr><th>Gate</th><th>Status</th><th>Threshold</th></tr></thead>
     <tbody>
-      <tr><td>Quality (test_smape_target)</td><td class=\"{'pass' if gates['quality_pass'] else 'fail'}\">{'PASS' if gates['quality_pass'] else 'FAIL'}</td><td>&lt;= {thresholds['max_test_smape_percent']}</td></tr>
+      <tr><td>Quality ({promotion_context.get('promotion_gate_metric', 'primary gate')})</td><td class=\"{'pass' if gates['quality_pass'] else 'fail'}\">{'PASS' if gates['quality_pass'] else 'FAIL'}</td><td>&lt;= {thresholds.get('primary_promotion_gate_threshold', thresholds['max_test_smape_percent'])}</td></tr>
       <tr><td>baseline_speed_pass</td><td class=\"{'pass' if gates['baseline_speed_pass'] else 'fail'}\">{'PASS' if gates['baseline_speed_pass'] else 'FAIL'}</td><td>&lt;= {thresholds['cmmi_max_baseline_hours']} hours</td></tr>
       <tr><td>evaluation_speed_pass</td><td class=\"{'pass' if gates['evaluation_speed_pass'] else 'fail'}\">{'PASS' if gates['evaluation_speed_pass'] else 'FAIL'}</td><td>&lt;= {thresholds['cmmi_max_evaluation_hours']} hours</td></tr>
       <tr><td>artifact_completeness_pass</td><td class=\"{'pass' if gates['artifact_completeness_pass'] else 'fail'}\">{'PASS' if gates['artifact_completeness_pass'] else 'FAIL'}</td><td>== {thresholds['cmmi_artifact_completeness_required']}</td></tr>
       <tr><td>promotion_recommendation</td><td class=\"{'pass' if report['recommendation']['promotion_recommendation'] == 'pass' else 'fail'}\">{report['recommendation']['promotion_recommendation'].upper()}</td><td>Quality and CMMI all pass</td></tr>
     </tbody>
   </table>
+
+  <h2>Config Snapshot</h2>
+  <pre>{config_snapshot_json}</pre>
 </body>
 </html>
 """

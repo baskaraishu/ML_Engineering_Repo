@@ -21,9 +21,11 @@
 | Notebook section | Local repo file | Status |
 |---|---|---|
 | Data loading + client filter | src/data/load_training_data.py | Done |
+| Stage 2/3 refinery contract + guardrail zones | src/training/refinery.py | Done |
 | Time cyclical features | src/features/time_features.py | Done |
 | Target log-uplift transform | src/features/target_transform.py | Done |
 | XGBoost train + MLflow logging | src/training/train_xgboost.py | Done |
+| Run report payload and artifact rendering | src/reporting/training_report.py | Done |
 | SMAPE metric | src/evaluation/metrics.py | Done |
 | CMMI process KPIs | src/governance/cmmi_l5_metrics.py | Done |
 | Optuna hyperparameter tuning | src/training/tune_optuna.py | Phase 2 |
@@ -40,7 +42,7 @@
 | Registered model name | XGBoost_MultiClient_Forecast_IB_Uplift_Analysis |
 | Registry location | Unity Catalog (evri_datalakehouse_prod_catalog) |
 | Promotion flow | MLflow Pending → Approved → Production |
-| Champion criteria | SMAPE degradation ≤ 3% vs current champion |
+| Champion criteria | Primary quality gate `test_smape_volume <= 15.0`, archetype hard-gate compliance, and all CMMI gates pass |
 
 ---
 
@@ -62,11 +64,13 @@ model = mlflow.xgboost.load_model(f"models:/{model_name}/{model_version}")
 ## 5. Lineage Chain (End to End)
 
 ```
-fcast_multi_client_data_build_champion_IB_uplift (analytics_sandbox)
+fcast_multi_client_data_build_champion_modelv35 (analytics_sandbox)
   -> src/data/load_training_data.py  (client filter, volume gate)
+  -> src/training/refinery.py        (Stage 2 contract + Stage 3 row guardrail)
   -> src/features/time_features.py   (cyclical encodings)
   -> src/features/target_transform.py (log-uplift target)
-  -> src/training/train_xgboost.py   (train + MLflow log)
+  -> src/training/train_xgboost.py   (train + operational archetype gating + MLflow log)
+  -> src/reporting/training_report.py (run_summary.json/html with promotion context)
   -> Unity Catalog Model Registry    (versioned, governed)
   -> jobs/train_job.yaml             (scheduled execution)
   -> sql/serving_forecast_view.sql   (consumer layer)
