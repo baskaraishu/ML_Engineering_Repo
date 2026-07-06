@@ -30,7 +30,7 @@ MIN_CLIENT_MEDIAN_VOLUME: int = 10
 # ---------------------------------------------------------------------------
 # Single runtime switch for training input mode.
 # Supported values: "csv" or "live_table".
-DEFAULT_INPUT_SOURCE_MODE: str = "csv"
+DEFAULT_INPUT_SOURCE_MODE: str = "live_table"
 
 # CSV default used when DEFAULT_INPUT_SOURCE_MODE == "csv" and no
 # --input-csv override is provided.
@@ -92,7 +92,7 @@ XGB_RANDOM_STATE: int = 42
 # Evaluation quality gate
 # Maximum allowed SMAPE on the test split for model promotion.
 # ---------------------------------------------------------------------------
-MAX_SMAPE_THRESHOLD: float = 15.0  # percent; run rejected if test_smape_target > this
+MAX_SMAPE_THRESHOLD: float = 15.0  # percent; run rejected if test_smape_volume > this
 
 # ---------------------------------------------------------------------------
 # CMMI L5 process gates
@@ -113,7 +113,7 @@ DEFAULT_EXPERIMENT_NAME: str = "/Shared/forecasting/parcel-volume-forecast"
 # Databricks job identity
 # ---------------------------------------------------------------------------
 # Used by CLI/REST examples and automation helpers that need the numeric job id.
-DATABRICKS_JOB_ID: int = 587032785657077
+DATABRICKS_JOB_ID: int = 745290703540915
 
 # ---------------------------------------------------------------------------
 # Databricks workspace repo mapping

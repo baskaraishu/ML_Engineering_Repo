@@ -14,9 +14,9 @@ resources:
             python_file: src/training/train_xgboost.py
             parameters:
               # Input and experiment parameters must match runbook + governance evidence flows.
-              # NOTE: Serverless Jobs Compute v2 does not mount /dbfs/. Use /Workspace/ paths instead.
+              # NOTE: Live-table mode passes catalog.schema.table via --input-csv for backward compatibility.
               - --input-csv
-              - /Workspace/Shared/forecasting/multi_client_ib_uplift.csv
+              - evri_datalakehouse_prod_catalog.analytics_sandbox.fcast_multi_client_data_build_champion_modelv35
               - --experiment
               - /Shared/forecasting/parcel-volume-forecast
               - --dataset-version
