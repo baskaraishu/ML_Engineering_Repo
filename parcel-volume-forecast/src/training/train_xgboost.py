@@ -15,11 +15,17 @@ Inputs:
 - CSV path containing time-series features and baseline columns
 - MLflow experiment name
 - dataset version label for traceability
+- optional Unity Catalog table source for live-table training
 
 Outputs:
 - model artifact in MLflow
 - validation/test SMAPE metrics
 - CMMI process metrics and gate flags used in phase-governance reviews
+
+The loader applies the staged refinery contract before training: Stage 2
+filters and projects the live-table rows in a bounded, validated slice, and
+Stage 3 evaluates whether the filtered volume remains within the approved
+operational tolerance envelope.
 """
 
 import mlflow
@@ -76,6 +82,7 @@ from src.governance.cmmi_l5_metrics import CmmiRunRecord, cmmi_l5_gate_status
 from src.training.data_validation import validate_input_dataframe
 from src.training.feature_selection import infer_feature_columns
 from src.training.model_factory import build_xgb_regressor
+from src.training.refinery import apply_refinery_filters_to_pandas, evaluate_refinery_guardrail
 from src.training.reporting import emit_training_run_report
 from src.training.splitting import split_train_val_test
 from src.training.train_config import TrainConfig
@@ -183,11 +190,34 @@ def _load_training_data(input_source: str) -> pd.DataFrame:
     else:
         logger.info("Detected CSV file: %s", input_source)
         df = pd.read_csv(input_source)
-    
+
     if df.empty:
         raise ValueError(f"Input data from {input_source} is empty.")
-    
-    return df
+
+    filtered_df = apply_refinery_filters_to_pandas(df)
+    if filtered_df.empty:
+        raise ValueError(f"Refinery filters removed all rows from {input_source}.")
+
+    if is_table:
+        guardrail = evaluate_refinery_guardrail(len(filtered_df), expected_row_count=124506)
+        if guardrail.passed:
+            if guardrail.failure_reason is None:
+                logger.info(
+                    "Stage 3 guardrail: nominal operation (drop_frac=%.4f)",
+                    guardrail.drop_frac,
+                )
+            else:
+                logger.warning(
+                    "Stage 3 guardrail: approved deviation (drop_frac=%.4f, reason=%s)",
+                    guardrail.drop_frac,
+                    guardrail.failure_reason,
+                )
+        else:
+            raise RuntimeError(
+                f"Stage 3 guardrail failed for live-table input: {guardrail.failure_reason}"
+            )
+
+    return filtered_df
 
 
 def _resolve_input_source(input_csv: str | None) -> str:

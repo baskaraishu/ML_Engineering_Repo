@@ -1,7 +1,11 @@
 """Central configuration for the parcel-volume-forecast training pipeline.
 
-All tunable values are defined here, grouped by purpose.
-Import from this module rather than hardcoding values in individual modules.
+All tunable values are defined here, grouped by purpose. Import from this
+module rather than hardcoding values in individual modules.
+
+The refinery guardrail defaults below are intentionally centralized so the
+Stage 2/Stage 3 contract can be tuned in one place when the live-table source
+changes or when the expected training volume shifts.
 """
 
 # ---------------------------------------------------------------------------
@@ -39,6 +43,14 @@ SOURCE_TABLE_ENV_VAR: str = "PARCEL_FORECAST_SOURCE_TABLE"
 # Prevents OOM when the full table is larger than driver memory.
 # Must exceed VAL_DAYS + TEST_DAYS (84) to leave training data; 365 is default.
 TRAINING_LOOKBACK_DAYS: int = 365
+
+# ---------------------------------------------------------------------------
+# Refinery guardrail defaults
+# ---------------------------------------------------------------------------
+REFINERY_EXPECTED_ROW_COUNT: int = 124506
+REFINERY_MIN_ROW_FRACTION: float = 0.50
+REFINERY_MAX_DROP_FRACTION: float = 0.92
+REFINERY_NOMINAL_DROP_FRAC: float = 0.02
 
 # ---------------------------------------------------------------------------
 # Train / validation / test split
