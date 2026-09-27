@@ -1,7 +1,7 @@
 {
-  "job_id": 587032785657077,
+  "job_id": 745290703540915,
   "new_settings": {
-    "name": "New Job (Live Data from Table) 2026-07-01 23:49:58",
+    "name": "parcel-volume-forecast-live-table",
     "max_concurrent_runs": 1,
     "performance_target": "PERFORMANCE_OPTIMIZED",
     "queue": {
