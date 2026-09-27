@@ -7,3 +7,6 @@
 # Track only the parcel-volume-forecast project
 !parcel-volume-forecast/
 !parcel-volume-forecast/**
+!.github/
+!.github/workflows/
+!.github/workflows/ci.yml
