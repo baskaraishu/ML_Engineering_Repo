@@ -166,6 +166,34 @@ These documents are the source of truth for:
 4. Preserve production parity between local and Databricks execution.
 5. Keep debug convenience isolated from governed artifacts.
 
+## Future Scope (Phase 2)
+
+The current Phase 1 baseline is promotion-approved and optimized for governed reliability. Phase 2 focuses on improving model quality while preserving operational speed.
+
+1. Hyperparameter tuning (target: +2 to +5 SMAPE point improvement)
+- Run bounded search over n_estimators, max_depth, learning_rate, subsample, and colsample_bytree.
+- Use MLflow-tracked tuning runs with fixed train/val/test windows for fair comparison.
+
+2. Early stopping integration
+- Add validation-based early stopping to stop tree growth when metric improvement plateaus.
+- Preserve deterministic behavior with fixed random seed and logged stopping round.
+
+3. Time-series cross-validation for robustness
+- Add rolling-window or expanding-window validation to reduce split sensitivity.
+- Promote only when average fold performance and cohort gates remain within envelope.
+
+4. Feature contribution and pruning workflow
+- Add feature importance and stability review (gain, split count, and optional SHAP summary).
+- Prune low-value event features if they add complexity without measurable uplift.
+
+5. Dynamic quality gate calibration
+- Periodically compare model SMAPE to naive baseline under current live-table regime.
+- Re-evaluate global threshold when baseline shifts materially due to volume mix or seasonality.
+
+6. Runtime and cost SLO hardening
+- Keep production retraining runtime under 5 minutes with current serverless profile.
+- Track per-run compute duration and cost trend as formal operational KPIs.
+
 ## Ownership
 
 Model owner: Central Analytics
