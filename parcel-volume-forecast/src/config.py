@@ -35,6 +35,11 @@ DEFAULT_SOURCE_CSV_PATH: str = "data/multi_client_ib_uplift.csv"
 DEFAULT_SOURCE_TABLE: str = "evri_datalakehouse_prod_catalog.analytics_sandbox.fcast_multi_client_data_build_champion_ib_uplift"
 SOURCE_TABLE_ENV_VAR: str = "PARCEL_FORECAST_SOURCE_TABLE"
 
+# Number of calendar days of history to pull when reading from a live table.
+# Prevents OOM when the full table is larger than driver memory.
+# Must exceed VAL_DAYS + TEST_DAYS (84) to leave training data; 365 is default.
+TRAINING_LOOKBACK_DAYS: int = 365
+
 # ---------------------------------------------------------------------------
 # Train / validation / test split
 # Number of calendar days reserved for each held-out window.
