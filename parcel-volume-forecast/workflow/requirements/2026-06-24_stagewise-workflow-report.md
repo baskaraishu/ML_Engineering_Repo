@@ -1,4 +1,4 @@
-# Requirements: Stage-wise Workflow Report
+﻿# Requirements: Stage-wise Workflow Report
 
 ## 1. Business Question
 How do we define a comprehensive stage-wise workflow report that documents the entire ML lifecycle from business understanding through retraining, with explicit input, derivation method, and output for each of the 15 workflow stages?
@@ -54,7 +54,7 @@ How do we define a comprehensive stage-wise workflow report that documents the e
 - Validate that every stage has input, derivation method, and output.
 
 ### 4.5 Publish and review
-- Link the completed report from `docs/project/runbook.md` and `docs/project/decision_log.md`.
+- Link the completed report from `docs/project/operations/runbook.md` and `docs/project/records/decision_log.md`.
 - Conduct team review with the Senior ML Engineer, DS owner, and delivery lead.
 - Obtain formal approval before treating the requirement as implemented.
 
@@ -132,7 +132,7 @@ How do we define a comprehensive stage-wise workflow report that documents the e
 
 ### Stage 15: Retraining Pipeline
 **Input:** Drift alerts, performance degradation, or scheduled cadence
-**Derivation Method:** Trigger workflow to repeat Stages 2–12 with new data
+**Derivation Method:** Trigger workflow to repeat Stages 2â€“12 with new data
 **Output:** New model version registered, promotion decision, updated serving views
 
 ## 5. Data Sources and Evidence per Stage
@@ -155,7 +155,7 @@ How do we define a comprehensive stage-wise workflow report that documents the e
 ## 6. Expected Output Artifacts
 1. A stage-wise report template saved at `docs/project/phase1_stagewise_report.md` with all 15 stages.
 2. One example report created from a Phase 1 training run.
-3. Report links added to `docs/project/runbook.md` and `docs/project/decision_log.md`.
+3. Report links added to `docs/project/operations/runbook.md` and `docs/project/records/decision_log.md`.
 4. A handoff checklist confirming each stage is complete before proceeding.
 
 ## 7. CMMI Gate 0
@@ -177,3 +177,4 @@ Requirement is complete when:
 
 ## 10. Approval Request
 Please confirm whether this 15-stage workflow report requirement is approved for implementation.
+

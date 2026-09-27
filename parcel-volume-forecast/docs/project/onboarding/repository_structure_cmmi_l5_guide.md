@@ -1,4 +1,4 @@
-# Repository Structure and CMMI L5 Guide
+﻿# Repository Structure and CMMI L5 Guide
 
 ## Purpose
 This guide explains why each major folder and key file exists, what team problem it solves, and which CMMI Level 5 control objective it supports.
@@ -16,7 +16,7 @@ This guide explains why each major folder and key file exists, what team problem
 | `jobs/` | Workflow orchestration definitions | Scheduled, auditable operations | Managed process execution | `jobs/train_job.yaml` |
 | `sql/` | Governed KPI and serving views | Shared metric truth and reporting consistency | Organizational process performance | `sql/cmmi_l5_process_metrics.sql`, `sql/serving_forecast_view.sql` |
 | `tests/` | Regression and unit protection | Safe change velocity | Defect prevention and stability | `tests/test_target_transform.py`, `tests/test_cmmi_l5_metrics.py` |
-| `docs/project/` | Operational runbook and decisions | Traceable go/no-go history | Institutional learning and governance | `docs/project/runbook.md`, `docs/project/decision_log.md` |
+| `docs/project/` | Operational runbook and decisions | Traceable go/no-go history | Institutional learning and governance | `docs/project/operations/runbook.md`, `docs/project/records/decision_log.md` |
 | `docs/ai-governance/` | Model governance artifacts | Audit-ready model context | Governance compliance | model card, risk, and lineage docs |
 | `workflow/requirements/` | Approved scope contracts before implementation | Requirements-first delivery discipline | CMMI Gate 0 enforcement | approved requirement files |
 
@@ -28,7 +28,7 @@ This guide explains why each major folder and key file exists, what team problem
 | `src/governance/cmmi_l5_metrics.py` | Core CMMI process metric calculations and gate evaluation | Any change to gate thresholds or process KPIs |
 | `sql/cmmi_l5_process_metrics.sql` | Aggregated process KPI reporting view | Any change to process KPI definitions or reporting granularity |
 | `jobs/train_job.yaml` | Databricks workflow execution contract | Any schedule, cluster, or parameter change |
-| `docs/project/phase1_leadership_summary.md` | Leadership-facing status and go/no-go snapshot | After each Phase checkpoint |
+| `docs/project/records/decision_log.md` | Auditable phase checkpoint decisions and go/no-go rationale | After each Phase checkpoint |
 
 ## Architectural Decisions and Why They Matter
 
@@ -42,7 +42,7 @@ The training pipeline is structured as plain Python functions in `src/training/t
 |---|---|---|
 | Testability | Cells cannot be imported or called by pytest | Functions imported directly in `tests/test_training.py` |
 | Code path consistency | Notebook runs are environment-dependent | Same function runs locally in pytest AND in Databricks job |
-| Regression safety | No safety net — cell change is silently live | A broken function fails pytest before reaching Databricks |
+| Regression safety | No safety net â€” cell change is silently live | A broken function fails pytest before reaching Databricks |
 | Traceability | Notebook history is fragile and non-linear | Git diff shows exactly what changed in which function |
 | CMMI evidence | Manual review of output cells | Automated gate flags logged to MLflow on every run |
 
@@ -66,7 +66,7 @@ No notebook conversion, no environment translation, no hidden state.
 CMMI gate logic lives in `src/governance/cmmi_l5_metrics.py` as callable Python and is validated by `tests/test_cmmi_l5_metrics.py`. This means:
 - Gate thresholds are version-controlled and auditable.
 - A regression in gate logic (e.g. threshold accidentally widened) is caught by a test.
-- Evidence is emitted programmatically to MLflow on every run — not filled in manually after the fact.
+- Evidence is emitted programmatically to MLflow on every run â€” not filled in manually after the fact.
 
 A notebook-only or spreadsheet-based governance approach cannot provide these guarantees.
 
@@ -81,3 +81,4 @@ A notebook-only or spreadsheet-based governance approach cannot provide these gu
 - Weekly during active migration.
 - At each phase closeout.
 - Immediately after any workflow, metric, or governance model change.
+
