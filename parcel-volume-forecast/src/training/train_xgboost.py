@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -23,7 +24,10 @@ Outputs:
 import mlflow
 import pandas as pd
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if "__file__" in globals():
+    PROJECT_ROOT = Path(__file__).resolve().parents[2]
+else:
+    PROJECT_ROOT = Path(os.getcwd()).resolve()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
