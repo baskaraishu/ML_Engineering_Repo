@@ -349,7 +349,11 @@ def _load_training_data(input_source: str) -> pd.DataFrame:
                 .filter(F.col(DATE_COL).isNotNull())
                 .filter(F.col(ACTUAL_COL).isNotNull())
                 .filter(F.col(BASELINE_COL).isNotNull())
-                .filter(F.col(TARGET_COL).isNotNull())
+                # TARGET_COL is excluded from the null filter: it is overwritten
+                # by build_uplift_target() in run_training() and must not be used
+                # to gate row inclusion here.  Rows with a null pre-computed
+                # uplift_target in the live table are still valid if actual_volume
+                # and baseline_volume are present.
                 .filter(F.col(BASELINE_COL).cast("double") > MIN_CLIENT_MEDIAN_VOLUME)
             )
             df = spark_df.toPandas()
@@ -522,6 +526,14 @@ def run_training(
         test_pred_volume = invert_uplift_target(test_pred, test[cfg.baseline_col])
         val_smape_volume = smape(val[cfg.actual_col].values, val_pred_volume.values)
         test_smape_volume = smape(test[cfg.actual_col].values, test_pred_volume.values)
+
+        # Naive baseline SMAPE: what SMAPE you'd get by predicting = baseline
+        # (no model).  Logged for diagnostic comparison only.
+        naive_test_smape_volume = smape(test[cfg.actual_col].values, test[cfg.baseline_col].values)
+        logger.info(
+            "Naive baseline SMAPE (test): %.2f%% | Model SMAPE (test): %.2f%%",
+            naive_test_smape_volume, test_smape_volume,
+        )
 
         archetype_quality_pass, archetype_ledger, promotion_block_reason, has_spiker_warning = (
             _evaluate_operational_archetype_gates(test, test_pred_volume, train_df=train)
