@@ -42,7 +42,7 @@ class RefineryGuardrailResult:
 def _get_refinery_manifest() -> dict[str, Any]:
     return {
         "column_map": {
-            "date": {"source": "preadvice_date", "target": DATE_COL},
+            "date": {"source": ["preadvice_date", "DATE_DATE"], "target": DATE_COL},
             "volume": {"source": "parcel_volume", "target": ACTUAL_COL},
             "baseline": {"source": "median_4wk_volume", "target": BASELINE_COL},
             "target": {"source": TARGET_COL, "target": TARGET_COL},
@@ -63,8 +63,11 @@ def _get_refinery_manifest() -> dict[str, Any]:
     }
 
 
-def _resolve_column_name(columns: list[str], aliases: list[str]) -> str | None:
+def _resolve_column_name(columns: list[str], aliases: list[str] | str) -> str | None:
     """Resolve a column name from either the raw live-table schema or the normalized training schema."""
+
+    if isinstance(aliases, str):
+        aliases = [aliases]
 
     normalized_columns = {column.lower(): column for column in columns}
     for alias in aliases:
@@ -88,7 +91,8 @@ def apply_refinery_filters_to_pandas(df: pd.DataFrame) -> pd.DataFrame:
 
     resolved_columns = {}
     for field, mapping in column_map.items():
-        aliases = [mapping["source"], mapping["target"]]
+        source = mapping["source"]
+        aliases = [mapping["target"]] + (source if isinstance(source, list) else [source])
         resolved = _resolve_column_name(df.columns.tolist(), aliases)
         if resolved is None:
             raise ValueError(
