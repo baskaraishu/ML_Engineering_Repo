@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import logging
 import os
 import sys
@@ -24,10 +25,28 @@ Outputs:
 import mlflow
 import pandas as pd
 
-if "__file__" in globals():
-    PROJECT_ROOT = Path(__file__).resolve().parents[2]
-else:
-    PROJECT_ROOT = Path(os.getcwd()).resolve()
+
+def _resolve_project_root() -> Path:
+    candidate_paths: list[Path] = []
+    if "__file__" in globals():
+        candidate_paths.append(Path(__file__).resolve())
+
+    current_frame = inspect.currentframe()
+    if current_frame is not None:
+        candidate_paths.append(Path(current_frame.f_code.co_filename).resolve())
+
+    candidate_paths.append(Path(os.getcwd()).resolve())
+
+    for candidate in candidate_paths:
+        search_roots = [candidate] if candidate.is_dir() else candidate.parents
+        for root in search_roots:
+            if (root / "src" / "config.py").exists():
+                return root
+
+    return Path(os.getcwd()).resolve()
+
+
+PROJECT_ROOT = _resolve_project_root()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
