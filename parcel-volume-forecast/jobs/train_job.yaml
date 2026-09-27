@@ -14,14 +14,18 @@ resources:
             python_file: src/training/train_xgboost.py
             parameters:
               # Input and experiment parameters must match runbook + governance evidence flows.
+              # NOTE: Serverless Jobs Compute v2 does not mount /dbfs/. Use /Workspace/ paths instead.
               - --input-csv
-              - /dbfs/FileStore/forecasting/multi_client_ib_uplift.csv
+              - /Workspace/Shared/forecasting/multi_client_ib_uplift.csv
               - --experiment
               - /Shared/forecasting/parcel-volume-forecast
               - --dataset-version
               - v1
               - --run-mode
               - production
+          libraries:
+            - pypi:
+                package: xgboost==3.3.0
           existing_cluster_id: ${var.training_cluster_id}
       schedule:
         # Weekly cadence for controlled retraining; review in phase closeout if changed.
