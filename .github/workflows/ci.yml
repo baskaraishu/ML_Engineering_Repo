@@ -12,7 +12,6 @@ on:
       - develop
       - main
       - master
-      - 'copilot/**'
   workflow_dispatch:
   schedule:
     - cron: '0 9 * * *'
