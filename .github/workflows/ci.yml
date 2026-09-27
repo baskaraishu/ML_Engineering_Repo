@@ -17,6 +17,9 @@ on:
   schedule:
     - cron: '0 9 * * *'
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Unit tests
