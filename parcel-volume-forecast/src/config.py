@@ -69,7 +69,7 @@ DEFAULT_EXPERIMENT_NAME: str = "/Shared/forecasting/parcel-volume-forecast"
 # Databricks job identity
 # ---------------------------------------------------------------------------
 # Used by CLI/REST examples and automation helpers that need the numeric job id.
-DATABRICKS_JOB_ID: int = 610583632972805
+DATABRICKS_JOB_ID: int = 587032785657077
 
 # ---------------------------------------------------------------------------
 # Databricks workspace repo mapping
