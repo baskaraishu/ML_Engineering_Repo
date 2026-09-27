@@ -63,6 +63,10 @@ from src.config import (
     MODEL_NAME,
     DEFAULT_DATASET_VERSION,
     DEFAULT_EXPERIMENT_NAME,
+    DEFAULT_INPUT_SOURCE_MODE,
+    DEFAULT_SOURCE_CSV_PATH,
+    DEFAULT_SOURCE_TABLE,
+    SOURCE_TABLE_ENV_VAR,
 )
 from src.evaluation.metrics import smape
 from src.features.target_transform import build_uplift_target
@@ -93,20 +97,85 @@ def _infer_feature_columns(df: pd.DataFrame, cfg: TrainConfig) -> list[str]:
     return infer_feature_columns(df, cfg)
 
 
+def _load_training_data(input_source: str) -> pd.DataFrame:
+    """Load training data from CSV file or Unity Catalog table.
+    
+    Args:
+        input_source: Either a CSV file path (/path/to/file.csv) or a 
+                      Unity Catalog table name (catalog.schema.table)
+    
+    Returns:
+        DataFrame with loaded training data
+        
+    Raises:
+        ValueError: If data is empty or table/file not found
+    """
+    logger.info("Loading training data from %s", input_source)
+    
+    # Detect if input is a table name (contains dots) or CSV file path
+    is_table = (
+        not input_source.endswith(".csv") and 
+        "." in input_source and 
+        "/" not in input_source.replace("\\", "/")
+    )
+    
+    if is_table:
+        logger.info("Detected Unity Catalog table: %s", input_source)
+        try:
+            from pyspark.sql import SparkSession
+            spark = SparkSession.getActiveSession()
+            if spark is None:
+                raise RuntimeError("SparkSession not available. Cannot read from table in non-Databricks environment.")
+            df = spark.table(input_source).toPandas()
+        except ImportError:
+            raise RuntimeError("PySpark not available. Cannot read from Unity Catalog tables in local environment.")
+    else:
+        logger.info("Detected CSV file: %s", input_source)
+        df = pd.read_csv(input_source)
+    
+    if df.empty:
+        raise ValueError(f"Input data from {input_source} is empty.")
+    
+    return df
+
+
+def _resolve_input_source(input_csv: str | None) -> str:
+    """Resolve the effective training input source from CLI or config.
+
+    Precedence:
+    1. Explicit CLI --input-csv value
+    2. Config switch DEFAULT_INPUT_SOURCE_MODE
+       - csv -> DEFAULT_SOURCE_CSV_PATH
+       - live_table -> SOURCE_TABLE_ENV_VAR or DEFAULT_SOURCE_TABLE
+    """
+    if input_csv:
+        return input_csv
+
+    source_mode = DEFAULT_INPUT_SOURCE_MODE.strip().lower()
+    if source_mode == "csv":
+        return DEFAULT_SOURCE_CSV_PATH
+    if source_mode == "live_table":
+        return os.getenv(SOURCE_TABLE_ENV_VAR, DEFAULT_SOURCE_TABLE)
+
+    raise ValueError(
+        "DEFAULT_INPUT_SOURCE_MODE must be either 'csv' or 'live_table'."
+    )
+
+
 def run_training(
-    input_csv: str,
+    input_csv: str | None,
     experiment_name: str,
     dataset_version: str = "v1",
     run_mode: str = "production",
 ) -> None:
     """Run the Phase 1 training experiment and log MLflow/CMMI metrics.
 
-    This entrypoint reads the training CSV, constructs uplift targets and
-    cyclical time features, trains an XGBoost model, evaluates held-out data,
+    This entrypoint reads the training CSV or SQL table, constructs uplift targets 
+    and cyclical time features, trains an XGBoost model, evaluates held-out data,
     and emits governance evidence for CMMI L5 process gates.
     
     Call sequence (all steps in this single function):
-    1. Load CSV
+    1. Load CSV or table
     2. Validate input → _validate_input_dataframe()
     3. Add time features → add_cyclical_time_features()
     4. Build uplift target → build_uplift_target()
@@ -117,6 +186,13 @@ def run_training(
     9. Log core run outputs to MLflow
     10. Compute CMMI gate status
     11. Generate structured run report artifacts
+    
+    Parameters:
+        input_csv: Optional CSV path or table name override. If omitted,
+            source is selected by DEFAULT_INPUT_SOURCE_MODE in src/config.py.
+        experiment_name: MLflow experiment name
+        dataset_version: Version label for traceability
+        run_mode: 'production' or 'debug'
     """
     normalized_run_mode = run_mode.strip().lower()
     if normalized_run_mode not in {"production", "debug"}:
@@ -125,14 +201,17 @@ def run_training(
     experiment_start = datetime.utcnow()  # CMMI metric: marks the start of the run for baseline_speed and evaluation_speed calculations
     cfg = TrainConfig(dataset_version=dataset_version)
 
-    # STEP 1: Load training data
-    logger.info("Loading training data from %s", input_csv)
-    df = pd.read_csv(input_csv)
+    # STEP 1: Load training data (supports both CSV and Unity Catalog tables)
+    effective_input_source = _resolve_input_source(input_csv)
+    source_mode = DEFAULT_INPUT_SOURCE_MODE.strip().lower()
+    logger.info("Resolved input source mode=%s source=%s", source_mode, effective_input_source)
+
+    df = _load_training_data(effective_input_source)
     if df.empty:
-        raise ValueError("Input training CSV is empty.")
+        raise ValueError("Input training data is empty.")
 
     if cfg.date_col not in df.columns:
-        raise ValueError(f"Missing required date column '{cfg.date_col}' in input CSV.")
+        raise ValueError(f"Missing required date column '{cfg.date_col}' in input data.")
     df[cfg.date_col] = pd.to_datetime(df[cfg.date_col], errors="coerce")
 
     # STEP 2: Validate input data — stops pipeline if validation fails
@@ -158,6 +237,8 @@ def run_training(
     with mlflow.start_run(run_name="xgb_multi_client_ib_uplift") as run:
         mlflow.set_tag("run_mode", normalized_run_mode)
         mlflow.log_param("run_mode", normalized_run_mode)
+        mlflow.log_param("input_source_mode", source_mode)
+        mlflow.log_param("input_source", effective_input_source)
 
         xgb.fit(train[feature_cols], train[cfg.target_col])
 
@@ -228,11 +309,36 @@ def run_training(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--input-csv", required=True)
-    parser.add_argument("--experiment", default=DEFAULT_EXPERIMENT_NAME)
-    parser.add_argument("--dataset-version", default=DEFAULT_DATASET_VERSION)
-    parser.add_argument("--run-mode", default="production", choices=["production", "debug"])
+    parser = argparse.ArgumentParser(
+        description="Train XGBoost parcel volume forecast model. "
+        "Supports loading from CSV file or Unity Catalog table."
+    )
+    parser.add_argument(
+        "--input-csv",
+        required=False,
+        default=None,
+        help=(
+            "Optional CSV file path (e.g. /Workspace/path/data.csv) or "
+            "Unity Catalog table name (e.g. catalog.schema.table). "
+            "If omitted, source is selected by DEFAULT_INPUT_SOURCE_MODE in src/config.py."
+        )
+    )
+    parser.add_argument(
+        "--experiment",
+        default=DEFAULT_EXPERIMENT_NAME,
+        help="MLflow experiment name or path"
+    )
+    parser.add_argument(
+        "--dataset-version",
+        default=DEFAULT_DATASET_VERSION,
+        help="Dataset version label for traceability"
+    )
+    parser.add_argument(
+        "--run-mode",
+        default="production",
+        choices=["production", "debug"],
+        help="Execution mode: production (normal) or debug (test)"
+    )
     args = parser.parse_args()
 
     run_training(args.input_csv, args.experiment, args.dataset_version, args.run_mode)
