@@ -76,7 +76,8 @@ DATABRICKS_JOB_ID: int = 587032785657077
 # ---------------------------------------------------------------------------
 # This must point to the Databricks workspace repo root that contains this
 # repository when deploying jobs via direct CLI/API reset rather than a bundle.
-DEFAULT_DATABRICKS_WORKSPACE_REPO_ROOT: str = "/Workspace/Repos/<user-or-service-principal>/parcel-volume-forecast"
+# NOTE: Update this to your actual workspace repo path before deployment.
+DEFAULT_DATABRICKS_WORKSPACE_REPO_ROOT: str = "/Workspace/Repos/service-principal@evri.com/parcel-volume-forecast"
 
 # ---------------------------------------------------------------------------
 # Databricks Phase 0 compute fallback
@@ -84,4 +85,5 @@ DEFAULT_DATABRICKS_WORKSPACE_REPO_ROOT: str = "/Workspace/Repos/<user-or-service
 # Temporary fallback cluster that is known to run notebook experiments and can
 # be used to unblock job-triggered validation when job-compute permissions are
 # still being provisioned.
-DEFAULT_DATABRICKS_PHASE0_FALLBACK_CLUSTER_ID: str = "<all-purpose-cluster-id>"
+# NOTE: Update this to your actual cluster ID before Phase 0 debugging.
+DEFAULT_DATABRICKS_PHASE0_FALLBACK_CLUSTER_ID: str = "0701-234651-abc1def2"
