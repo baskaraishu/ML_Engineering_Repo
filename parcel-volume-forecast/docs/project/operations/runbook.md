@@ -143,21 +143,15 @@ How to change behavior:
 
 | Parameter | Local smoke run | Databricks serverless job |
 |---|---|---|
-| `--input-csv` | `data/multi_client_ib_uplift.csv` | `/Workspace/Shared/forecasting/multi_client_ib_uplift.csv` |
+| `--input-csv` | `data/multi_client_ib_uplift.csv` | `evri_datalakehouse_prod_catalog.analytics_sandbox.fcast_multi_client_data_build_champion_modelv35` |
 | `--experiment` | any name (file-backed MLflow) | `/Shared/forecasting/parcel-volume-forecast` |
 | `--dataset-version` | `v1` | `v1` |
 | `--run-mode` | `debug` recommended | `production` for governed runs; `debug` for ad-hoc |
 | `PYTHONPATH` | must set `PYTHONPATH=.` | not needed — entrypoint bootstraps the repo root |
 
-### Two job configurations available
+### Maintained Databricks job configuration
 
-The training script supports both CSV file and Unity Catalog table inputs. Two job configurations are provided:
-
-**CSV-based job** (`jobs/job-smoke-csv-reset.json`)
-- Reads training data from uploaded CSV file in Databricks workspace
-- Input: `/Workspace/Shared/forecasting/multi_client_ib_uplift.csv`
-- Use when: you have static training data or want to control exactly which data is used
-- Setup: upload CSV file once with `databricks workspace import` (see command below)
+The maintained production job configuration is:
 
 **Live table job** (`jobs/job-live-table-reset.json`)
 - Reads training data directly from Unity Catalog table
@@ -166,18 +160,12 @@ The training script supports both CSV file and Unity Catalog table inputs. Two j
 - Setup: ensure table exists in your Databricks catalog and has required columns
 - Advantage: no manual data uploads needed; data is fresh from upstream pipeline
 
-To switch jobs:
-1. Apply the desired job configuration: `databricks jobs reset --job-id 745290703540915 --json @jobs/job-smoke-csv-reset.json` (CSV) or `databricks jobs reset --job-id 745290703540915 --json @jobs/job-live-table-reset.json` (live table)
+To apply the maintained job configuration:
+1. Apply the live-table configuration: `databricks jobs reset --job-id 745290703540915 --json @jobs/job-live-table-reset.json`
 2. Verify configuration in Databricks Workflows UI
 3. Test with a manual run before relying on scheduled runs
 
-Data upload for Databricks CSV option (run once before first trigger, or when training data changes):
-
-```powershell
-databricks workspace import /Shared/forecasting/multi_client_ib_uplift.csv --file data/multi_client_ib_uplift.csv --format RAW --overwrite
-```
-
-For the live table option, ensure your source system populates the table with required columns matching the CSV schema.
+Ensure your source system populates the table with required columns matching the training contract.
 
 3. Trigger a Databricks run
    - Use one of the currently available methods below.
@@ -210,11 +198,11 @@ Use the option that matches the situation you are in right now.
    - `python_params`: optional inline JSON override list.
 
 ```powershell
-# Production smoke run (CSV)
+# Production run (live table defaults)
 databricks jobs run-now 745290703540915
 
-# Debug run (CSV)
-databricks jobs run-now --json '{"job_id":745290703540915,"python_params":["--input-csv","/Workspace/Shared/forecasting/multi_client_ib_uplift.csv","--dataset-version","v1","--run-mode","debug"]}'
+# Debug run (live table override)
+databricks jobs run-now --json '{"job_id":745290703540915,"python_params":["--input-csv","evri_datalakehouse_prod_catalog.analytics_sandbox.fcast_multi_client_data_build_champion_modelv35","--dataset-version","v1_live","--run-mode","debug"]}'
 ```
 
 4. Databricks REST API `jobs/run-now`
@@ -225,7 +213,7 @@ databricks jobs run-now --json '{"job_id":745290703540915,"python_params":["--in
 ```bash
 curl -n -X POST https://<databricks-instance>/api/2.1/jobs/run-now \
   -H 'Content-Type: application/json' \
-   -d '{"job_id": 745290703540915, "python_params": ["--input-csv", "/Workspace/Shared/forecasting/multi_client_ib_uplift.csv", "--dataset-version", "v1", "--run-mode", "debug"]}'
+   -d '{"job_id": 745290703540915, "python_params": ["--input-csv", "evri_datalakehouse_prod_catalog.analytics_sandbox.fcast_multi_client_data_build_champion_modelv35", "--dataset-version", "v1_live", "--run-mode", "debug"]}'
 ```
 
 5. Databricks SDK
@@ -240,8 +228,8 @@ client = WorkspaceClient()
 resp = client.jobs.run_now(
    job_id=745290703540915,
     python_params=[
-        "--input-csv", "/Workspace/Shared/forecasting/multi_client_ib_uplift.csv",
-        "--dataset-version", "v1",
+      "--input-csv", "evri_datalakehouse_prod_catalog.analytics_sandbox.fcast_multi_client_data_build_champion_modelv35",
+      "--dataset-version", "v1_live",
         "--run-mode", "debug",
     ],
 )
