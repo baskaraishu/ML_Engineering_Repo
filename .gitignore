@@ -4,6 +4,11 @@
 # Keep this file tracked
 !.gitignore
 
+# Allow GitHub Actions workflow files at repository root
+!.github/
+!.github/workflows/
+!.github/workflows/*.yml
+
 # Track only the parcel-volume-forecast project
 !parcel-volume-forecast/
 !parcel-volume-forecast/**
