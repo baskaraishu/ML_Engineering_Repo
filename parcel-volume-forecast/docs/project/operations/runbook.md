@@ -19,6 +19,10 @@ Runtime source parameter rule (Phase 0):
 - Use precedence `CLI -> env -> config default` for local/preflight resolution.
 - Production Jobs/CI should pass runtime source parameters explicitly.
 
+Current live-table production target (as of 2026-07-06):
+- Active Databricks job id: `745290703540915`
+- Active Unity Catalog source table: `evri_datalakehouse_prod_catalog.analytics_sandbox.fcast_multi_client_data_build_champion_modelv35`
+
 ## Recommended operating flow
 
 ### When to use the staged refinery path
@@ -51,6 +55,7 @@ Use the live-table refinery path when:
 
 - For local smoke tests, prefer the CSV path unless you are explicitly validating the live-table contract.
 - For Databricks production runs, use the live-table path only after confirming the source table has the expected columns and values.
+- Before triggering a live-table run after a data-source change, execute a SQL parity count with the same Stage 2 predicates (`DATE_SUB(current_date(), 365)`, non-null date/actual/target, `median_4wk_volume > 10`) to verify row volume is above the Stage 3 minimum threshold (`62253`).
 - If the run logs a governance warning, review the volume drop in the training run report and decide whether the live-table source still meets the operational contract.
 - If the run fails with a Stage 3 error, treat it as a data-quality incident and investigate the upstream source before retrying.
 
@@ -90,6 +95,17 @@ Generated files:
 Training run report artifacts are generated automatically by `src/training/train_xgboost.py` and logged to MLflow under `reports/` as:
 - `run_summary.json`
 - `run_summary.html`
+
+The run summary now includes operational and governance sections used for promotion review:
+- `operational_archetype_briefing` (cohort rows, business SMAPE, threshold, workflow impact)
+- `promotion_context` (metric, threshold, observed value, explicit block reason)
+- `config_snapshot` (runtime thresholds and cohort cut points)
+
+Current promotion gate policy:
+- Primary quality gate: `test_smape_volume <= 15.0`.
+- Archetype hard gates: Anchors `<= 7.5`, Dials `<= 13.0`, Phantoms `<= 32.0`.
+- Spikers `<= 24.0` is warning-only (does not block promotion by itself).
+- Final recommendation requires quality gate pass and all CMMI gates pass.
 
 2. Run the model locally for a smoke test (optional but recommended)
    - Command: `python src/training/train_xgboost.py --input-csv data/multi_client_ib_uplift.csv --experiment "parcel-volume-forecast-local-smoke" --dataset-version v1 --run-mode debug`
@@ -145,13 +161,13 @@ The training script supports both CSV file and Unity Catalog table inputs. Two j
 
 **Live table job** (`jobs/job-live-table-reset.json`)
 - Reads training data directly from Unity Catalog table
-- Input: `forecasting_prod.landing.multi_client_ib_uplift` (table name)
+- Input: `evri_datalakehouse_prod_catalog.analytics_sandbox.fcast_multi_client_data_build_champion_modelv35` (table name)
 - Use when: you have a live data pipeline and want automatic data freshness
 - Setup: ensure table exists in your Databricks catalog and has required columns
 - Advantage: no manual data uploads needed; data is fresh from upstream pipeline
 
 To switch jobs:
-1. Apply the desired job configuration: `databricks jobs reset --job-id 587032785657077 --json @jobs/job-smoke-csv-reset.json` (CSV) or `databricks jobs reset --job-id 587032785657077 --json @jobs/job-live-table-reset.json` (live table)
+1. Apply the desired job configuration: `databricks jobs reset --job-id 745290703540915 --json @jobs/job-smoke-csv-reset.json` (CSV) or `databricks jobs reset --job-id 745290703540915 --json @jobs/job-live-table-reset.json` (live table)
 2. Verify configuration in Databricks Workflows UI
 3. Test with a manual run before relying on scheduled runs
 
@@ -195,10 +211,10 @@ Use the option that matches the situation you are in right now.
 
 ```powershell
 # Production smoke run (CSV)
-databricks jobs run-now 587032785657077
+databricks jobs run-now 745290703540915
 
 # Debug run (CSV)
-databricks jobs run-now --json '{"job_id":587032785657077,"python_params":["--input-csv","/Workspace/Shared/forecasting/multi_client_ib_uplift.csv","--dataset-version","v1","--run-mode","debug"]}'
+databricks jobs run-now --json '{"job_id":745290703540915,"python_params":["--input-csv","/Workspace/Shared/forecasting/multi_client_ib_uplift.csv","--dataset-version","v1","--run-mode","debug"]}'
 ```
 
 4. Databricks REST API `jobs/run-now`
@@ -209,7 +225,7 @@ databricks jobs run-now --json '{"job_id":587032785657077,"python_params":["--in
 ```bash
 curl -n -X POST https://<databricks-instance>/api/2.1/jobs/run-now \
   -H 'Content-Type: application/json' \
-  -d '{"job_id": 587032785657077, "python_params": ["--input-csv", "/Workspace/Shared/forecasting/multi_client_ib_uplift.csv", "--dataset-version", "v1", "--run-mode", "debug"]}'
+   -d '{"job_id": 745290703540915, "python_params": ["--input-csv", "/Workspace/Shared/forecasting/multi_client_ib_uplift.csv", "--dataset-version", "v1", "--run-mode", "debug"]}'
 ```
 
 5. Databricks SDK
@@ -222,7 +238,7 @@ from databricks.sdk import WorkspaceClient
 
 client = WorkspaceClient()
 resp = client.jobs.run_now(
-    job_id=587032785657077,
+   job_id=745290703540915,
     python_params=[
         "--input-csv", "/Workspace/Shared/forecasting/multi_client_ib_uplift.csv",
         "--dataset-version", "v1",
@@ -247,4 +263,8 @@ For operational validation, promotion, rollback, and contacts, see the other doc
 ### Verification rule
 - Verify Databricks production success from the Databricks run state, logs, MLflow metrics, model artifacts, and governance report artifacts.
 - Do not use a post-run local smoke execution as a substitute for Databricks production verification.
+
+### Local debug artifacts policy
+- Keep ad-hoc debugging scripts and outputs under `local-debug/` only.
+- Do not commit local debug artifacts to Git; `local-debug/.gitignore` is the enforcement point.
 

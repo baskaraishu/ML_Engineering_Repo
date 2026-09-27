@@ -30,7 +30,7 @@
 
 - Minimum volume filter enforced in src/data/load_training_data.py
 - Holdout test set never seen during training or tuning
-- SMAPE promotion gate prevents regression vs champion
+- Business-space promotion gate (`test_smape_volume <= 15.0`) combined with operational archetype hard-gates (Anchors, Dials, Phantoms)
 - Human review required before forecast published to planning app
 
 ---

@@ -36,7 +36,7 @@
 
 | Property | Value |
 |---|---|
-| Source table | fcast_multi_client_data_build_champion_IB_uplift (analytics_sandbox) |
+| Source table | fcast_multi_client_data_build_champion_modelv35 (analytics_sandbox) |
 | Client scope | Clients present in champion model v35 only |
 | Low-volume filter | Median daily volume > 10 |
 | Split method | Time-based: train / 42-day val / 42-day holdout test |
@@ -68,17 +68,38 @@ Inverse transform applied during inference to return predicted absolute volume.
 
 | Metric | Scope | Phase-1 target |
 |---|---|---|
-| SMAPE | All clients | Tracked per run in MLflow |
-| SMAPE | Per-client | Logged in evaluation output |
+| SMAPE (target space) | All clients | Diagnostic only; tracked per run in MLflow |
+| SMAPE (business volume space) | All clients | Primary quality gate metric (`test_smape_volume`) |
+| SMAPE (business volume space) | Archetype cohort | Cohort-specific threshold by operational archetype |
 | Accuracy tier | Top-100 clients | Excellent / Good / Moderate / Poor |
-| Promotion gate | Test SMAPE degradation | ≤ 3% vs champion |
+| Promotion gate | Business-space quality and process controls | `test_smape_volume <= 15.0` AND all CMMI gates pass |
+
+### Operational archetype gate policy (Stage 3)
+
+| Archetype | Threshold (Business SMAPE) | Gate impact |
+|---|---:|---|
+| The Anchors | 7.5 | Hard fail (critical rejection) |
+| The Dials | 13.0 | Hard fail (critical rejection) |
+| The Spikers | 24.0 | Warning only (deviation warning) |
+| The Phantoms | 32.0 | Hard fail (critical rejection) |
+
+The training report now logs per-cohort evidence under `operational_archetype_briefing` with a workflow impact flag:
+- `ZONE_1_NOMINAL`
+- `ZONE_2_DEVIATION_WARNING`
+- `ZONE_3_CRITICAL_REJECTION`
+
+Promotion context is logged under `promotion_context` with:
+- `promotion_gate_metric`
+- `promotion_gate_threshold`
+- `promotion_gate_value`
+- `promotion_block_reason`
 
 ---
 
 ## 8. Known Limitations and Risks
 
 - Calendar features do not capture exceptional events (strikes, peak disruptions)
-- Client-level accuracy varies significantly across low/high-volume segments
+- Client-level accuracy varies significantly across low/high-volume segments, which is mitigated operationally using archetype-specific thresholds
 - Uplift target assumes 4-week median is a stable baseline — volatile clients may drift
 - Model has no built-in uncertainty quantification
 
@@ -93,6 +114,6 @@ Inverse transform applied during inference to return predicted absolute volume.
 | PII controls | Enforced by data pipeline upstream |
 | Feature set versioned | src/features/ modules |
 | All runs tracked in MLflow | Enforced by train entrypoint |
-| Promotion gate documented | Yes — 3% SMAPE degradation threshold |
+| Promotion gate documented | Yes — business-space gate + archetype cohort policy |
 | Model card maintained | This document |
 | Drift monitoring planned | Phase 2 |

@@ -7,7 +7,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 """Phase 1 training entrypoint with MLflow and CMMI process evidence capture.
 
@@ -72,11 +72,20 @@ from src.config import (
     DEFAULT_INPUT_SOURCE_MODE,
     DEFAULT_SOURCE_CSV_PATH,
     DEFAULT_SOURCE_TABLE,
+    ARCHETYPE_HIGH_PREDICTABILITY_QUANTILE,
+    ARCHETYPE_HIGH_VOLUME_QUANTILE,
+    ARCHETYPE_LOW_PREDICTABILITY_QUANTILE,
+    ARCHETYPE_LOW_VOLUME_QUANTILE,
+    MAX_ANCHOR_SMAPE,
+    MAX_DIAL_SMAPE,
+    MAX_PHANTOM_SMAPE,
+    MAX_SPIKER_SMAPE,
+    REFINERY_EXPECTED_ROW_COUNT,
     SOURCE_TABLE_ENV_VAR,
     TRAINING_LOOKBACK_DAYS,
 )
 from src.evaluation.metrics import smape
-from src.features.target_transform import build_uplift_target
+from src.features.target_transform import build_uplift_target, invert_uplift_target
 from src.features.time_features import add_cyclical_time_features
 from src.governance.cmmi_l5_metrics import CmmiRunRecord, cmmi_l5_gate_status
 from src.training.data_validation import validate_input_dataframe
@@ -93,6 +102,123 @@ if TYPE_CHECKING:
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _is_unity_catalog_table(input_source: str) -> bool:
+    """Detect if an input source string is a Unity Catalog table name."""
+
+    return (
+        not input_source.endswith(".csv")
+        and "." in input_source
+        and "/" not in input_source.replace("\\", "/")
+    )
+
+
+def _assign_operational_archetypes(df: pd.DataFrame) -> pd.Series:
+    """Assign each row to an operational client archetype for logistics gating.
+
+    Archetype logic intentionally avoids per-client model infrastructure by
+    grouping the entire portfolio into operational cohorts at validation time.
+    """
+
+    baseline = pd.to_numeric(df[BASELINE_COL], errors="coerce").fillna(0.0)
+    actual = pd.to_numeric(df[ACTUAL_COL], errors="coerce").fillna(0.0)
+    china_flag = pd.to_numeric(df["is_china"], errors="coerce").fillna(0.0) if "is_china" in df.columns else pd.Series(0.0, index=df.index)
+    predictability_signal = ((actual - baseline).abs() / baseline.replace(0, pd.NA)).fillna(0.0)
+
+    high_volume_cut = float(baseline.quantile(ARCHETYPE_HIGH_VOLUME_QUANTILE))
+    low_volume_cut = float(baseline.quantile(ARCHETYPE_LOW_VOLUME_QUANTILE))
+    low_predictability_cut = float(predictability_signal.quantile(ARCHETYPE_LOW_PREDICTABILITY_QUANTILE))
+    high_predictability_cut = float(predictability_signal.quantile(ARCHETYPE_HIGH_PREDICTABILITY_QUANTILE))
+
+    high_volume = baseline >= high_volume_cut
+    low_volume = baseline <= low_volume_cut
+    low_predictability = (predictability_signal >= low_predictability_cut) | (china_flag > 0)
+    high_predictability = (predictability_signal <= high_predictability_cut) & (china_flag <= 0)
+
+    cohort = pd.Series("The Dials", index=df.index, dtype="object")
+    cohort.loc[high_volume & high_predictability] = "The Anchors"
+    cohort.loc[high_volume & low_predictability] = "The Spikers"
+    cohort.loc[low_volume] = "The Phantoms"
+    return cohort
+
+
+def _evaluate_operational_archetype_gates(
+    test_df: pd.DataFrame,
+    pred_volume: pd.Series,
+) -> tuple[bool, list[dict[str, Any]], str | None, bool]:
+    """Evaluate cohort-level gates and return promotion decision telemetry.
+
+    Returns:
+        quality_pass: hard gate status used for promotion blocking.
+        archetype_ledger: operational briefing rows per cohort.
+        promotion_block_reason: explicit rejection reason when blocked.
+        deviation_warning: True when only warning-level cohort deviations occur.
+    """
+
+    archetypes = _assign_operational_archetypes(test_df)
+    threshold_by_archetype = {
+        "The Anchors": MAX_ANCHOR_SMAPE,
+        "The Dials": MAX_DIAL_SMAPE,
+        "The Spikers": MAX_SPIKER_SMAPE,
+        "The Phantoms": MAX_PHANTOM_SMAPE,
+    }
+    hard_gate_cohorts = {"The Anchors", "The Dials", "The Phantoms"}
+
+    ledger: list[dict[str, Any]] = []
+    quality_pass = True
+    promotion_block_reason: str | None = None
+    deviation_warning = False
+
+    for cohort_name in ["The Anchors", "The Dials", "The Spikers", "The Phantoms"]:
+        mask = archetypes == cohort_name
+        threshold = threshold_by_archetype[cohort_name]
+
+        if mask.sum() == 0:
+            cohort_smape = float("nan")
+            workflow_flag = "ZONE_1_NOMINAL"
+            breached = False
+        else:
+            cohort_smape = smape(test_df.loc[mask, ACTUAL_COL].values, pred_volume.loc[mask].values)
+            breached = cohort_smape > threshold
+            if breached and cohort_name in hard_gate_cohorts:
+                workflow_flag = "ZONE_3_CRITICAL_REJECTION"
+            elif breached:
+                workflow_flag = "ZONE_2_DEVIATION_WARNING"
+            else:
+                workflow_flag = "ZONE_1_NOMINAL"
+
+        if breached and cohort_name in hard_gate_cohorts:
+            quality_pass = False
+            if cohort_name == "The Anchors":
+                promotion_block_reason = (
+                    "CRITICAL REJECTION: Anchor cohort breached 8% floor tolerance. "
+                    "Potential depot gridlock risk."
+                )
+            elif cohort_name == "The Dials":
+                promotion_block_reason = (
+                    "CRITICAL REJECTION: Dial cohort exceeded contractual throughput tolerance. "
+                    "Courier schedule integrity at risk."
+                )
+            else:
+                promotion_block_reason = (
+                    "CRITICAL REJECTION: Phantom cohort exceeded loose long-tail tolerance. "
+                    "Mixed cage planning reliability at risk."
+                )
+        elif breached and cohort_name == "The Spikers":
+            deviation_warning = True
+
+        ledger.append(
+            {
+                "archetype": cohort_name,
+                "row_count": int(mask.sum()),
+                "business_smape": None if pd.isna(cohort_smape) else float(cohort_smape),
+                "threshold": float(threshold),
+                "workflow_impact_flag": workflow_flag,
+            }
+        )
+
+    return quality_pass, ledger, promotion_block_reason, deviation_warning
 
 
 def _validate_input_dataframe(df: pd.DataFrame, cfg: TrainConfig) -> None:
@@ -121,11 +247,7 @@ def _load_training_data(input_source: str) -> pd.DataFrame:
     logger.info("Loading training data from %s", input_source)
     
     # Detect if input is a table name (contains dots) or CSV file path
-    is_table = (
-        not input_source.endswith(".csv") and 
-        "." in input_source and 
-        "/" not in input_source.replace("\\", "/")
-    )
+    is_table = _is_unity_catalog_table(input_source)
     
     if is_table:
         logger.info("Detected Unity Catalog table: %s", input_source)
@@ -199,16 +321,21 @@ def _load_training_data(input_source: str) -> pd.DataFrame:
         raise ValueError(f"Refinery filters removed all rows from {input_source}.")
 
     if is_table:
-        guardrail = evaluate_refinery_guardrail(len(filtered_df), expected_row_count=124506)
+        guardrail = evaluate_refinery_guardrail(
+            len(filtered_df),
+            expected_row_count=REFINERY_EXPECTED_ROW_COUNT,
+        )
         if guardrail.passed:
             if guardrail.failure_reason is None:
                 logger.info(
-                    "Stage 3 guardrail: nominal operation (drop_frac=%.4f)",
+                    "Stage 3 guardrail: %s (drop_frac=%.4f)",
+                    guardrail.workflow_impact_flag,
                     guardrail.drop_frac,
                 )
             else:
                 logger.warning(
-                    "Stage 3 guardrail: approved deviation (drop_frac=%.4f, reason=%s)",
+                    "Stage 3 guardrail: %s (drop_frac=%.4f, reason=%s)",
+                    guardrail.workflow_impact_flag,
                     guardrail.drop_frac,
                     guardrail.failure_reason,
                 )
@@ -284,7 +411,7 @@ def run_training(
 
     # STEP 1: Load training data (supports both CSV and Unity Catalog tables)
     effective_input_source = _resolve_input_source(input_csv)
-    source_mode = DEFAULT_INPUT_SOURCE_MODE.strip().lower()
+    source_mode = "live_table" if _is_unity_catalog_table(effective_input_source) else "csv"
     logger.info("Resolved input source mode=%s source=%s", source_mode, effective_input_source)
 
     df = _load_training_data(effective_input_source)
@@ -339,12 +466,35 @@ def run_training(
         val_pred = xgb.predict(val[feature_cols])
         test_pred = xgb.predict(test[feature_cols])
 
+        # Diagnostic metrics in transformed target-space (log-uplift).
         val_smape = smape(val[cfg.target_col].values, val_pred)
         test_smape = smape(test[cfg.target_col].values, test_pred)
+
+        # Promotion metrics in business-space (absolute volume).
+        val_pred_volume = invert_uplift_target(val_pred, val[cfg.baseline_col])
+        test_pred_volume = invert_uplift_target(test_pred, test[cfg.baseline_col])
+        val_smape_volume = smape(val[cfg.actual_col].values, val_pred_volume.values)
+        test_smape_volume = smape(test[cfg.actual_col].values, test_pred_volume.values)
+
+        archetype_quality_pass, archetype_ledger, promotion_block_reason, has_spiker_warning = (
+            _evaluate_operational_archetype_gates(test, test_pred_volume)
+        )
+
+        for row in archetype_ledger:
+            logger.info(
+                "Stage 3 archetype ledger | %s | rows=%d | smape=%s | threshold=%.2f | flag=%s",
+                row["archetype"],
+                row["row_count"],
+                "NA" if row["business_smape"] is None else f"{row['business_smape']:.3f}",
+                row["threshold"],
+                row["workflow_impact_flag"],
+            )
 
         # STEP 6: Log core metrics, params, and model to MLflow
         mlflow.log_metric("val_smape_target", val_smape)
         mlflow.log_metric("test_smape_target", test_smape)
+        mlflow.log_metric("val_smape_volume", val_smape_volume)
+        mlflow.log_metric("test_smape_volume", test_smape_volume)
         mlflow.log_param("feature_count", len(feature_cols))
         mlflow.log_param("test_days", cfg.test_days)
         mlflow.log_param("val_days", cfg.val_days)
@@ -375,16 +525,47 @@ def run_training(
         mlflow.log_param("cmmi_evaluation_speed_pass", gates["evaluation_speed_pass"])  # True if ≤ 24.0 hours
         mlflow.log_param("cmmi_artifact_completeness_pass", gates["artifact_completeness_pass"])  # True if model artifact logged
 
-        quality_pass = test_smape <= MAX_SMAPE_THRESHOLD
+        quality_pass = archetype_quality_pass and (test_smape_volume <= MAX_SMAPE_THRESHOLD)
         promotion_recommendation = quality_pass and all(gates.values())
+
+        if promotion_block_reason is None and not quality_pass:
+            promotion_block_reason = (
+                "CRITICAL REJECTION: Overall business-space quality threshold breached. "
+                "Forecast error exceeds warehouse operating envelope."
+            )
+        if has_spiker_warning and promotion_block_reason is None:
+            promotion_block_reason = (
+                "WARNING: Spiker cohort breached volatility envelope. "
+                "Promotion can proceed with caution and floor monitoring."
+            )
+
         if normalized_run_mode == "debug":
             logger.warning("Debug run_mode enabled; promotion recommendation is forced to False.")
             promotion_recommendation = False
             mlflow.log_param("promotion_evidence_allowed", False)
         else:
             mlflow.log_param("promotion_evidence_allowed", True)
+
+        config_snapshot = {
+            "MAX_SMAPE_THRESHOLD": MAX_SMAPE_THRESHOLD,
+            "REFINERY_EXPECTED_ROW_COUNT": REFINERY_EXPECTED_ROW_COUNT,
+            "MAX_ANCHOR_SMAPE": MAX_ANCHOR_SMAPE,
+            "MAX_DIAL_SMAPE": MAX_DIAL_SMAPE,
+            "MAX_SPIKER_SMAPE": MAX_SPIKER_SMAPE,
+            "MAX_PHANTOM_SMAPE": MAX_PHANTOM_SMAPE,
+            "ARCHETYPE_HIGH_VOLUME_QUANTILE": ARCHETYPE_HIGH_VOLUME_QUANTILE,
+            "ARCHETYPE_LOW_VOLUME_QUANTILE": ARCHETYPE_LOW_VOLUME_QUANTILE,
+            "ARCHETYPE_LOW_PREDICTABILITY_QUANTILE": ARCHETYPE_LOW_PREDICTABILITY_QUANTILE,
+            "ARCHETYPE_HIGH_PREDICTABILITY_QUANTILE": ARCHETYPE_HIGH_PREDICTABILITY_QUANTILE,
+        }
+
+        mlflow.log_param("promotion_gate_metric", "test_smape_volume")
+        mlflow.log_param("promotion_gate_threshold", MAX_SMAPE_THRESHOLD)
         mlflow.log_param("quality_pass", quality_pass)
         mlflow.log_param("promotion_recommendation", promotion_recommendation)
+        mlflow.log_param("promotion_block_reason", promotion_block_reason or "None")
+        mlflow.log_dict(archetype_ledger, artifact_file="reports/archetype_stage3_ledger.json")
+        mlflow.log_dict(config_snapshot, artifact_file="reports/config_snapshot.json")
 
         # STEP 8: Generate and log structured report artifacts for leadership and audit consumption.
         emit_training_run_report(
@@ -393,10 +574,19 @@ def run_training(
             cfg=cfg,
             test_smape_target=test_smape,
             val_smape_target=val_smape,
+            test_smape_volume=test_smape_volume,
+            val_smape_volume=val_smape_volume,
             cmmi_hours_to_baseline=hours_to_baseline,
             cmmi_hours_to_evaluation=hours_to_evaluation,
             cmmi_artifact_completeness=1.0 if gov_record.artifacts_complete else 0.0,
             cmmi_gates=gates,
+            promotion_recommendation=promotion_recommendation,
+            promotion_gate_metric="test_smape_volume",
+            promotion_gate_threshold=MAX_SMAPE_THRESHOLD,
+            promotion_gate_value=test_smape_volume,
+            promotion_block_reason=promotion_block_reason or "None",
+            archetype_stage3_ledger=archetype_ledger,
+            config_snapshot=config_snapshot,
             artifact_path="reports",
         )
 

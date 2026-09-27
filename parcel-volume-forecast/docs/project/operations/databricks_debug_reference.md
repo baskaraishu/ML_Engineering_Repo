@@ -19,7 +19,7 @@ Purpose: this document captures every diagnosed failure mode encountered during 
 | `ModuleNotFoundError: No module named 'xgboost'` | Runtime import | `xgboost` is not pre-installed in Databricks serverless Jobs Compute v2 and was not declared in the job environment spec | Add `xgboost==3.3.0` to `environments[].spec.dependencies` in `jobs/job-smoke-csv-reset.json`; apply with `databricks jobs reset` |
 | `FileNotFoundError: /dbfs/FileStore/forecasting/...` | Data load | Serverless Jobs Compute v2 does not mount `/dbfs/`; FUSE mount only exists on classic clusters | Upload CSV to Workspace (`databricks workspace import`) and pass `/Workspace/Shared/forecasting/...` as `--input-csv` |
 | `Workload failed, see run output for details` | Task | Generic wrapper — the real error is one layer down in task output | Fetch task-level run output (see inspection commands below) |
-| `Stage 3 guardrail failed for live-table input` | Data contract | The refined training slice dropped below the approved volume envelope | Investigate the source table and the filter contract in `src/training/refinery.py`; confirm the live-table data still satisfies the required column and row-volume thresholds before retrying |
+| `Stage 3 guardrail failed for live-table input` | Data contract | The refined training slice dropped below the approved volume envelope | Validate row counts with the same Stage 2 predicates before rerun; for current production use `...fcast_multi_client_data_build_champion_modelv35` instead of stale low-volume tables |
 
 ---
 
@@ -34,7 +34,7 @@ Purpose: this document captures every diagnosed failure mode encountered during 
 | `__file__` in executed scripts | Not set (exec context) | Set normally |
 | Compute permission | Managed by Databricks, no cluster create permission needed | Requires `Can Create Cluster` or existing cluster |
 
-The live job (`587032785657077`) runs on **serverless Jobs Compute v2**. Always apply the serverless column rules.
+The live job (`745290703540915`) runs on **serverless Jobs Compute v2**. Always apply the serverless column rules.
 
 ---
 
@@ -45,7 +45,7 @@ Run these in order to narrow a failure to the exact line.
 ### Step 1 — get the most recent job run id
 
 ```powershell
-databricks jobs list-runs --job-id 587032785657077 --limit 1 --output json
+databricks jobs list-runs --job-id 745290703540915 --limit 1 --output json
 ```
 
 Note the `run_id` from the response.
@@ -71,7 +71,7 @@ The `error` field contains the exception class and message. The `logs` field con
 ### Step 4 — check environment spec (if import error)
 
 ```powershell
-databricks jobs get 587032785657077 --output json | ConvertFrom-Json | Select-Object -ExpandProperty settings | Select-Object -ExpandProperty environments
+databricks jobs get 745290703540915 --output json | ConvertFrom-Json | Select-Object -ExpandProperty settings | Select-Object -ExpandProperty environments
 ```
 
 Confirm `dependencies` includes `xgboost==3.3.0`. If not, update `jobs/job-smoke-csv-reset.json` and re-apply:
@@ -88,6 +88,45 @@ databricks workspace list /Shared/forecasting
 
 # Check DBFS (only for classic cluster jobs)
 databricks fs ls dbfs:/FileStore/forecasting
+```
+
+### Step 6 — run SQL parity check for Stage 2 filtering (if Stage 3 guardrail fails)
+
+Use a SQL warehouse query that mirrors the Stage 2 predicates before rerunning the job.
+
+```sql
+SELECT 'champion_modelv35' AS tbl, COUNT(*) AS valid_rows
+FROM evri_datalakehouse_prod_catalog.analytics_sandbox.fcast_multi_client_data_build_champion_modelv35
+WHERE preadvice_date >= DATE_SUB(current_date(), 365)
+  AND preadvice_date IS NOT NULL
+  AND parcel_volume IS NOT NULL
+  AND median_4wk_volume > 10
+  AND target IS NOT NULL;
+```
+
+Interpretation:
+- Stage 3 minimum threshold is `62253` valid rows (`124506 * 0.50`).
+- If `valid_rows < 62253`, the run is expected to fail with `CRITICAL: DataStarvationError`.
+- If `valid_rows >= 62253`, investigate other causes (schema mismatch, task config, or runtime errors).
+
+Optional comparison query (old vs current source):
+
+```sql
+SELECT 'champion_ib_uplift' AS tbl, COUNT(*) AS valid_rows
+FROM evri_datalakehouse_prod_catalog.analytics_sandbox.fcast_multi_client_data_build_champion_ib_uplift
+WHERE preadvice_date >= DATE_SUB(current_date(), 365)
+  AND preadvice_date IS NOT NULL
+  AND parcel_volume IS NOT NULL
+  AND median_4wk_volume > 10
+  AND target IS NOT NULL
+UNION ALL
+SELECT 'champion_modelv35' AS tbl, COUNT(*) AS valid_rows
+FROM evri_datalakehouse_prod_catalog.analytics_sandbox.fcast_multi_client_data_build_champion_modelv35
+WHERE preadvice_date >= DATE_SUB(current_date(), 365)
+  AND preadvice_date IS NOT NULL
+  AND parcel_volume IS NOT NULL
+  AND median_4wk_volume > 10
+  AND target IS NOT NULL;
 ```
 
 ---
@@ -128,6 +167,13 @@ python -m src.training.train_xgboost --input-csv data/multi_client_ib_uplift.csv
   - Check report generation helpers in `src/reporting/training_report.py`.
   - Verify artifacts under the MLflow run in `reports/`.
 
+4. Promotion unexpectedly rejected with successful training run
+  - Root cause: quality gate now uses business-space SMAPE (`test_smape_volume`) and archetype hard-gate outcomes, not only transformed-target metrics.
+  - Check `test_smape_volume`, `quality_pass`, and `promotion_recommendation` in MLflow metrics.
+  - Open `reports/run_summary.json` and inspect:
+    - `operational_archetype_briefing` for any `ZONE_3_CRITICAL_REJECTION` rows,
+    - `promotion_context.promotion_block_reason` for explicit rejection reason.
+
 ---
 
 ## Runtime dependencies and constraints
@@ -139,11 +185,12 @@ Local environment:
 - Run commands from repository root.
 - Set `PYTHONPATH=.` for local module execution when needed.
 
-Databricks serverless job constraints (job `587032785657077`):
+Databricks serverless job constraints (job `745290703540915`):
 - `/dbfs/` FUSE mount is not available on serverless compute; use `/Workspace/` input paths.
 - Third-party packages not pre-installed must be declared in `environments[].spec.dependencies`.
 - Current required declaration: `xgboost==3.3.0`.
 - Pre-installed in serverless v5: `mlflow`, `pandas`, `numpy`, `scipy`, `scikit-learn`.
+- Stage 3 guardrail currently expects minimum valid rows of `124506 * 0.50 = 62253`.
 
 Environment reset procedure:
 - After modifying `jobs/job-smoke-csv-reset.json`, apply changes with:
@@ -189,10 +236,10 @@ To add a new package (e.g. for a future phase):
 
 ```powershell
 # Production run — uses job default parameters
-databricks jobs run-now 587032785657077
+databricks jobs run-now 745290703540915
 
 # Debug run — override parameters
-databricks jobs run-now --json '{"job_id":587032785657077,"python_params":["--input-csv","/Workspace/Shared/forecasting/multi_client_ib_uplift.csv","--dataset-version","v1","--run-mode","debug"]}'
+databricks jobs run-now --json '{"job_id":745290703540915,"python_params":["--input-csv","/Workspace/Shared/forecasting/multi_client_ib_uplift.csv","--dataset-version","v1","--run-mode","debug"]}'
 
 # Apply a job config reset
 databricks jobs reset --json "@jobs/job-smoke-csv-reset.json"
@@ -226,3 +273,11 @@ Confirmed from run logs:
 | CI/CD trigger | Manual CLI / Databricks UI schedule | Jenkins or GitLab CI pipeline calls `databricks jobs run-now` post-merge to main |
 | Experiment path | `/Shared/forecasting/parcel-volume-forecast` (shared workspace) | Promote to Unity Catalog MLflow experiment for fine-grained access control |
 | `run_mode` | `production` flag in job config | Enforce via CI policy gate so debug-flagged runs cannot be used as promotion evidence |
+
+---
+
+## Local debug artifact policy
+
+- Store local-only MCP/CLI debugging helpers and outputs in `local-debug/`.
+- Keep `local-debug/` out of commits via `local-debug/.gitignore`.
+- Treat files under `local-debug/` as disposable troubleshooting artifacts, not governed run evidence.
