@@ -1,0 +1,42 @@
+# Project-specific generated files at repository root
+/databricks-job-reset*.json
+/databricks-run-now.json
+/debug-run-now.json
+/exp-search-runs*.json
+/trigger-check.json
+
+# Local MLflow tracking outputs
+/mlruns/
+/mlruns_phase1/
+
+# Generated local test reports
+/reports/tests/latest/
+
+# Archived docs excluded from active project scope
+/docs/archive/
+
+# Python runtime/build caches created by this project
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+
+# Local environments and tool state
+.venv/
+venv/
+env/
+.databricks/
+.dbx/
+.vscode/
+.idea/
+
+# OS-generated noise
+.DS_Store
+Thumbs.db
+
+# Notebook checkpoints
+.ipynb_checkpoints/

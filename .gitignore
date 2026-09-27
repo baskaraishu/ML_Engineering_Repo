@@ -1,0 +1,9 @@
+# Ignore everything at workspace root by default
+*
+
+# Keep this file tracked
+!.gitignore
+
+# Track only the parcel-volume-forecast project
+!parcel-volume-forecast/
+!parcel-volume-forecast/**
