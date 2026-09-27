@@ -80,6 +80,7 @@ from src.config import (
     MAX_DIAL_SMAPE,
     MAX_PHANTOM_SMAPE,
     MAX_SPIKER_SMAPE,
+    MIN_CLIENT_MEDIAN_VOLUME,
     REFINERY_EXPECTED_ROW_COUNT,
     SOURCE_TABLE_ENV_VAR,
     TRAINING_LOOKBACK_DAYS,
@@ -299,43 +300,60 @@ def _load_training_data(input_source: str) -> pd.DataFrame:
             cutoff_date = (datetime.now() - timedelta(days=TRAINING_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
             spark_df = spark.table(input_source)
 
-            table_date_col = _find_case_insensitive_column(
-                spark_df.columns,
-                [DATE_COL, "preadvice_date", "DATE_DATE"],
-            )
-            if table_date_col is None:
-                raise ValueError(
-                    "Unable to resolve a date column in live table. "
-                    f"Tried: [{DATE_COL}, preadvice_date, DATE_DATE]."
-                )
-
-            logger.info(
-                "Applying lookback filter: %s >= '%s' (%d days)",
-                table_date_col,
-                cutoff_date,
-                TRAINING_LOOKBACK_DAYS,
-            )
-            spark_df = spark_df.filter(F.to_date(F.col(table_date_col)) >= F.lit(cutoff_date))
-            df = spark_df.toPandas()
-
-            rename_candidates: dict[str, list[str]] = {
-                DATE_COL: [DATE_COL, "preadvice_date", "DATE_DATE"],
-                ACTUAL_COL: [ACTUAL_COL, "parcel_volume"],
-                BASELINE_COL: [BASELINE_COL, "median_4wk_volume"],
-                "is_china": ["is_china", "china_flag"],
+            # Resolve all required source column names before any filtering.
+            col_candidates = {
+                DATE_COL:      [DATE_COL, "preadvice_date", "DATE_DATE"],
+                ACTUAL_COL:    [ACTUAL_COL, "parcel_volume"],
+                BASELINE_COL:  [BASELINE_COL, "median_4wk_volume"],
+                TARGET_COL:    [TARGET_COL],
+                "is_china":    ["is_china", "china_flag"],
                 "is_domestic": ["is_domestic", "domestic_flag"],
             }
-            rename_map: dict[str, str] = {}
-            for target_col, candidates in rename_candidates.items():
-                if target_col in df.columns:
-                    continue
-                source_col = _find_case_insensitive_column(df.columns.tolist(), candidates)
-                if source_col is not None and source_col != target_col:
-                    rename_map[source_col] = target_col
+            resolved: dict[str, str | None] = {
+                tgt: _find_case_insensitive_column(spark_df.columns, aliases)
+                for tgt, aliases in col_candidates.items()
+            }
+            required = [DATE_COL, ACTUAL_COL, BASELINE_COL, TARGET_COL]
+            missing_cols = [r for r in required if resolved[r] is None]
+            if missing_cols:
+                raise ValueError(
+                    f"Unable to resolve required columns in live table: {missing_cols}. "
+                    f"Available columns: {spark_df.columns}"
+                )
 
-            if rename_map:
-                logger.info("Normalizing live table columns to training schema: %s", rename_map)
-                df = df.rename(columns=rename_map)
+            # Push ALL Stage 2 predicates into Spark before toPandas() so the
+            # driver only receives the model-ready slice.  Collecting the full
+            # raw table causes OOM on Databricks serverless for large windows.
+            logger.info(
+                "Applying Spark-side Stage 2 push-down: %s >= '%s' (%d days) "
+                "+ null/quality filters before toPandas()",
+                resolved[DATE_COL], cutoff_date, TRAINING_LOOKBACK_DAYS,
+            )
+            select_exprs = [
+                F.col(resolved[DATE_COL]).alias(DATE_COL),
+                F.col(resolved[ACTUAL_COL]).alias(ACTUAL_COL),
+                F.col(resolved[BASELINE_COL]).alias(BASELINE_COL),
+                F.col(resolved[TARGET_COL]).alias(TARGET_COL),
+            ]
+            for flag_col in ("is_china", "is_domestic"):
+                src = resolved[flag_col]
+                if src:
+                    select_exprs.append(F.col(src).alias(flag_col))
+                else:
+                    select_exprs.append(F.lit(0).alias(flag_col))
+
+            spark_df = (
+                spark_df
+                .select(*select_exprs)
+                .filter(F.to_date(F.col(DATE_COL)) >= F.lit(cutoff_date))
+                .filter(F.col(DATE_COL).isNotNull())
+                .filter(F.col(ACTUAL_COL).isNotNull())
+                .filter(F.col(BASELINE_COL).isNotNull())
+                .filter(F.col(TARGET_COL).isNotNull())
+                .filter(F.col(BASELINE_COL).cast("double") > MIN_CLIENT_MEDIAN_VOLUME)
+            )
+            df = spark_df.toPandas()
+            logger.info("Collected %d rows from live table after Spark-side Stage 2 push-down", len(df))
         except ImportError:
             raise RuntimeError("PySpark not available. Cannot read from Unity Catalog tables in local environment.")
     else:
