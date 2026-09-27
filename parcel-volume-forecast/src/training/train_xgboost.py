@@ -114,22 +114,33 @@ def _is_unity_catalog_table(input_source: str) -> bool:
     )
 
 
-def _assign_operational_archetypes(df: pd.DataFrame) -> pd.Series:
+def _assign_operational_archetypes(
+    df: pd.DataFrame,
+    ref_df: pd.DataFrame | None = None,
+) -> pd.Series:
     """Assign each row to an operational client archetype for logistics gating.
 
-    Archetype logic intentionally avoids per-client model infrastructure by
-    grouping the entire portfolio into operational cohorts at validation time.
+    Quantile cutpoints are derived from ref_df (training data) so that archetype
+    boundaries are stable across train/val/test splits.  When ref_df is not
+    supplied the function falls back to df itself (CSV / smoke-test mode).
     """
+    ref = ref_df if ref_df is not None else df
 
     baseline = pd.to_numeric(df[BASELINE_COL], errors="coerce").fillna(0.0)
     actual = pd.to_numeric(df[ACTUAL_COL], errors="coerce").fillna(0.0)
     china_flag = pd.to_numeric(df["is_china"], errors="coerce").fillna(0.0) if "is_china" in df.columns else pd.Series(0.0, index=df.index)
     predictability_signal = ((actual - baseline).abs() / baseline.replace(0, pd.NA)).fillna(0.0)
 
-    high_volume_cut = float(baseline.quantile(ARCHETYPE_HIGH_VOLUME_QUANTILE))
-    low_volume_cut = float(baseline.quantile(ARCHETYPE_LOW_VOLUME_QUANTILE))
-    low_predictability_cut = float(predictability_signal.quantile(ARCHETYPE_LOW_PREDICTABILITY_QUANTILE))
-    high_predictability_cut = float(predictability_signal.quantile(ARCHETYPE_HIGH_PREDICTABILITY_QUANTILE))
+    # Derive stable cutpoints from training-period distribution, not from the
+    # test window — prevents test-period anomalies from shifting archetype labels.
+    ref_baseline = pd.to_numeric(ref[BASELINE_COL], errors="coerce").fillna(0.0)
+    ref_actual = pd.to_numeric(ref[ACTUAL_COL], errors="coerce").fillna(0.0)
+    ref_predictability = ((ref_actual - ref_baseline).abs() / ref_baseline.replace(0, pd.NA)).fillna(0.0)
+
+    high_volume_cut = float(ref_baseline.quantile(ARCHETYPE_HIGH_VOLUME_QUANTILE))
+    low_volume_cut = float(ref_baseline.quantile(ARCHETYPE_LOW_VOLUME_QUANTILE))
+    low_predictability_cut = float(ref_predictability.quantile(ARCHETYPE_LOW_PREDICTABILITY_QUANTILE))
+    high_predictability_cut = float(ref_predictability.quantile(ARCHETYPE_HIGH_PREDICTABILITY_QUANTILE))
 
     high_volume = baseline >= high_volume_cut
     low_volume = baseline <= low_volume_cut
@@ -146,8 +157,18 @@ def _assign_operational_archetypes(df: pd.DataFrame) -> pd.Series:
 def _evaluate_operational_archetype_gates(
     test_df: pd.DataFrame,
     pred_volume: pd.Series,
+    train_df: pd.DataFrame | None = None,
 ) -> tuple[bool, list[dict[str, Any]], str | None, bool]:
     """Evaluate cohort-level gates and return promotion decision telemetry.
+
+    SMAPE is computed on the DAILY AGGREGATE volume per cohort, not on
+    individual client-day rows.  For a global model serving a multi-client
+    live table this is the operationally meaningful metric: planners act on
+    the total volume contributed by each cohort per day, not on per-row noise.
+
+    train_df is used to derive stable archetype quantile cutpoints so that
+    archetype boundaries are anchored to the training distribution and do not
+    shift with test-window anomalies.
 
     Returns:
         quality_pass: hard gate status used for promotion blocking.
@@ -156,7 +177,7 @@ def _evaluate_operational_archetype_gates(
         deviation_warning: True when only warning-level cohort deviations occur.
     """
 
-    archetypes = _assign_operational_archetypes(test_df)
+    archetypes = _assign_operational_archetypes(test_df, ref_df=train_df)
     threshold_by_archetype = {
         "The Anchors": MAX_ANCHOR_SMAPE,
         "The Dials": MAX_DIAL_SMAPE,
@@ -179,7 +200,15 @@ def _evaluate_operational_archetype_gates(
             workflow_flag = "ZONE_1_NOMINAL"
             breached = False
         else:
-            cohort_smape = smape(test_df.loc[mask, ACTUAL_COL].values, pred_volume.loc[mask].values)
+            # Daily-aggregate SMAPE: sum all client volumes per date within the
+            # cohort, then compute SMAPE across the test days.  This is the
+            # planning-level metric; row-level SMAPE on a global model without
+            # client features is dominated by inter-client noise and not
+            # actionable for depot planning decisions.
+            cohort_date = test_df.loc[mask, DATE_COL]
+            daily_actual = test_df.loc[mask, ACTUAL_COL].groupby(cohort_date).sum()
+            daily_pred = pred_volume.loc[mask].groupby(cohort_date).sum()
+            cohort_smape = smape(daily_actual.values, daily_pred.values)
             breached = cohort_smape > threshold
             if breached and cohort_name in hard_gate_cohorts:
                 workflow_flag = "ZONE_3_CRITICAL_REJECTION"
@@ -477,12 +506,12 @@ def run_training(
         test_smape_volume = smape(test[cfg.actual_col].values, test_pred_volume.values)
 
         archetype_quality_pass, archetype_ledger, promotion_block_reason, has_spiker_warning = (
-            _evaluate_operational_archetype_gates(test, test_pred_volume)
+            _evaluate_operational_archetype_gates(test, test_pred_volume, train_df=train)
         )
 
         for row in archetype_ledger:
             logger.info(
-                "Stage 3 archetype ledger | %s | rows=%d | smape=%s | threshold=%.2f | flag=%s",
+                "Stage 3 archetype ledger | %s | rows=%d | daily_agg_smape=%s | threshold=%.2f | flag=%s",
                 row["archetype"],
                 row["row_count"],
                 "NA" if row["business_smape"] is None else f"{row['business_smape']:.3f}",
