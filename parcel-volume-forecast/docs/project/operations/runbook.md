@@ -103,7 +103,7 @@ How to change behavior:
 
 The training script supports both CSV file and Unity Catalog table inputs. Two job configurations are provided:
 
-**CSV-based job** (`jobs/job-587032785657077-reset.json`)
+**CSV-based job** (`jobs/job-smoke-csv-reset.json`)
 - Reads training data from uploaded CSV file in Databricks workspace
 - Input: `/Workspace/Shared/forecasting/multi_client_ib_uplift.csv`
 - Use when: you have static training data or want to control exactly which data is used
@@ -117,7 +117,7 @@ The training script supports both CSV file and Unity Catalog table inputs. Two j
 - Advantage: no manual data uploads needed; data is fresh from upstream pipeline
 
 To switch jobs:
-1. Apply the desired job configuration: `databricks jobs reset --job-id 587032785657077 --json @jobs/job-587032785657077-reset.json` (CSV) or `databricks jobs reset --job-id 587032785657077 --json @jobs/job-587032785657077-live-data.json` (live table)
+1. Apply the desired job configuration: `databricks jobs reset --job-id 587032785657077 --json @jobs/job-smoke-csv-reset.json` (CSV) or `databricks jobs reset --job-id 587032785657077 --json @jobs/job-587032785657077-live-data.json` (live table)
 2. Verify configuration in Databricks Workflows UI
 3. Test with a manual run before relying on scheduled runs
 
@@ -153,24 +153,18 @@ Use the option that matches the situation you are in right now.
    - Parameters and location: use job default parameters from Databricks job settings.
 
 3. Databricks CLI `jobs run-now`
-   - Command: use CLI with JSON payload file.
+   - Command: use CLI directly with `job_id` or inline JSON overrides.
    - What it does: triggers one ad-hoc run from local terminal or CI.
    - Parameters and location:
-     - `job_id`: set in `run-trigger.json`.
-     - `python_params`: optional override list in `run-trigger.json`.
-     - `run-trigger.json` location: repository root (or current working directory).
+   - `job_id`: passed directly in the command.
+   - `python_params`: optional inline JSON override list.
 
 ```powershell
-# Production run — uses job-configured parameters, no override needed
-'{ "job_id": 587032785657077 }' | Out-File -Encoding ascii run-trigger.json
-databricks jobs run-now --json "@run-trigger.json"
+# Production smoke run (CSV)
+databricks jobs run-now 587032785657077
 
-# Debug run — override input path and run mode
-'{"job_id":587032785657077,"python_params":["--input-csv","/Workspace/Shared/forecasting/multi_client_ib_uplift.csv","--dataset-version","v1","--run-mode","debug"]}' | Out-File -Encoding ascii run-trigger.json
-databricks jobs run-now --json "@run-trigger.json"
-
-# Optional cleanup of temporary payload file
-Remove-Item run-trigger.json -ErrorAction SilentlyContinue
+# Debug run (CSV)
+databricks jobs run-now --json '{"job_id":587032785657077,"python_params":["--input-csv","/Workspace/Shared/forecasting/multi_client_ib_uplift.csv","--dataset-version","v1","--run-mode","debug"]}'
 ```
 
 4. Databricks REST API `jobs/run-now`
