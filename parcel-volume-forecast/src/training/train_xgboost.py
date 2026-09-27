@@ -394,7 +394,12 @@ def _load_training_data(input_source: str) -> pd.DataFrame:
     # Merge event feature columns back from pre-refinery df by index.
     # The refinery returns only the 6 canonical schema columns; event columns
     # are preserved separately so they are available to infer_feature_columns().
-    event_passthrough = [c for c in df.columns if c.startswith("event_")]
+    # Merge event feature columns back from pre-refinery df by index.
+    # Exclude DATE_COL ("event_date") — it starts with "event_" but is the
+    # date key, already present in filtered_df from the refinery.
+    event_passthrough = [
+        c for c in df.columns if c.startswith("event_") and c != DATE_COL
+    ]
     if event_passthrough:
         # Use pd.to_numeric(errors='coerce') so any column that arrives as a
         # non-numeric type (e.g. datetime.date from certain Spark INT columns)
