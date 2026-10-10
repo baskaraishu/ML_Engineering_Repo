@@ -53,7 +53,7 @@ def _get_refinery_manifest() -> dict[str, Any]:
         "push_down_filters": {
             "lookback_days": TRAINING_LOOKBACK_DAYS,
             "min_baseline_volume": MIN_CLIENT_MEDIAN_VOLUME,
-            "require_non_null": ["preadvice_date", "parcel_volume", "median_4wk_volume", TARGET_COL],
+            "require_non_null": ["preadvice_date", "parcel_volume", "median_4wk_volume"],
         },
         "guardrail": {
             "expected_row_count": REFINERY_EXPECTED_ROW_COUNT,
@@ -83,7 +83,8 @@ def apply_refinery_filters_to_pandas(df: pd.DataFrame) -> pd.DataFrame:
 
     The contract mirrors the planned Spark SQL enforcement: project only the
     required columns, enforce temporal and cohort filters, and require a non-null
-    target before any data is accepted into the training slice.
+    target before any data is accepted into the training slice when the source
+    provides one. Raw CSV inputs may omit it because training creates it later.
     """
 
     manifest = _get_refinery_manifest()
@@ -92,6 +93,10 @@ def apply_refinery_filters_to_pandas(df: pd.DataFrame) -> pd.DataFrame:
 
     resolved_columns = {}
     for field, mapping in column_map.items():
+        if field == "target" and mapping["target"].lower() not in {
+            column.lower() for column in df.columns
+        }:
+            continue
         source = mapping["source"]
         aliases = [mapping["target"]] + (source if isinstance(source, list) else [source])
         resolved = _resolve_column_name(df.columns.tolist(), aliases)
@@ -106,21 +111,28 @@ def apply_refinery_filters_to_pandas(df: pd.DataFrame) -> pd.DataFrame:
             DATE_COL: pd.to_datetime(df[resolved_columns["date"]], errors="coerce"),
             ACTUAL_COL: pd.to_numeric(df[resolved_columns["volume"]], errors="coerce"),
             BASELINE_COL: pd.to_numeric(df[resolved_columns["baseline"]], errors="coerce"),
-            TARGET_COL: pd.to_numeric(df[resolved_columns["target"]], errors="coerce"),
+            TARGET_COL: (
+                pd.to_numeric(df[resolved_columns["target"]], errors="coerce")
+                if "target" in resolved_columns
+                else float("nan")
+            ),
             "is_china": pd.to_numeric(df[resolved_columns["china"]], errors="coerce"),
             "is_domestic": pd.to_numeric(df[resolved_columns["domestic"]], errors="coerce"),
         }
     )
 
     cutoff = datetime.now().date() - timedelta(days=filters["lookback_days"])
-    filtered = candidate[
+    valid_rows = (
         (candidate[DATE_COL].notna())
         & (candidate[ACTUAL_COL].notna())
         & (candidate[BASELINE_COL].notna())
-        & (candidate[TARGET_COL].notna())
         & (candidate[BASELINE_COL] > filters["min_baseline_volume"])
         & (candidate[DATE_COL] >= pd.Timestamp(cutoff))
-    ].copy()
+    )
+    if "target" in resolved_columns:
+        valid_rows &= candidate[TARGET_COL].notna()
+
+    filtered = candidate[valid_rows].copy()
 
     return filtered[[DATE_COL, ACTUAL_COL, BASELINE_COL, TARGET_COL, "is_china", "is_domestic"]]
 

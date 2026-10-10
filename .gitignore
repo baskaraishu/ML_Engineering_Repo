@@ -1,14 +1,44 @@
-# Ignore everything at workspace root by default
-*
+# Local MLflow tracking outputs
+/mlruns/
+/mlruns_phase1/
 
-# Keep this file tracked
-!.gitignore
+# Python runtime/build caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ruff_cache/
+.mypy_cache/
 
-# Allow GitHub Actions workflow files at repository root
-!.github/
-!.github/workflows/
-!.github/workflows/*.yml
+# Local environments and tool state
+.venv/
+venv/
+env/
+.databricks/
+.dbx/
+.vscode/
+.idea/
 
-# Track only the parcel-volume-forecast project
-!parcel-volume-forecast/
-!parcel-volume-forecast/**
+# Generated local reports and temporary files
+/reports/tests/latest/
+/tmp/*
+!/tmp/fixtures/
+/tmp/fixtures/*
+!/tmp/fixtures/mini_logistics_input.csv
+/databricks-job-reset*.json
+/databricks-run-now.json
+/debug-run-now.json
+/exp-search-runs*.json
+/trigger-check.json
+/trigger-run.json
+/run-trigger.json
+
+# OS and notebook-generated files
+.DS_Store
+Thumbs.db
+.ipynb_checkpoints/
+
+# Keep the working project plan local
+/plan.md

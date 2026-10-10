@@ -89,6 +89,24 @@ def test_apply_refinery_filters_to_pandas_accepts_normalized_columns():
     assert len(filtered) == 2
 
 
+def test_apply_refinery_filters_to_pandas_accepts_raw_rows_without_target():
+    today = pd.Timestamp.today().normalize()
+    df = pd.DataFrame(
+        {
+            "event_date": [today - pd.Timedelta(days=2), today - pd.Timedelta(days=1)],
+            "actual_volume": [100.0, 150.0],
+            "rolling_4w_median": [20.0, 15.0],
+            "is_china": [0, 1],
+            "is_domestic": [1, 0],
+        }
+    )
+
+    filtered = apply_refinery_filters_to_pandas(df)
+
+    assert len(filtered) == 2
+    assert filtered["target"].isna().all()
+
+
 def test_apply_refinery_filters_to_pandas_accepts_date_date_alias():
     today = pd.Timestamp.today().normalize()
     df = pd.DataFrame(
