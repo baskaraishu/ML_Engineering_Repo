@@ -1,4 +1,4 @@
-mlflow==3.14.0
+mlflow==3.16.0
 numpy==2.5.0
 pandas==2.3.3
 xgboost==3.3.0
