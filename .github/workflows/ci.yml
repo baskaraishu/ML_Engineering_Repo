@@ -6,7 +6,7 @@ on:
       - develop
       - main
       - master
-      - 'copilot/**'
+      - "copilot/**"
   pull_request:
     branches:
       - develop
@@ -14,7 +14,7 @@ on:
       - master
   workflow_dispatch:
   schedule:
-    - cron: '0 9 * * *'
+    - cron: "0 9 * * *"
 
 permissions:
   contents: read
@@ -23,9 +23,6 @@ jobs:
   test:
     name: Unit tests
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: parcel-volume-forecast
 
     steps:
       - name: Check out repository
@@ -34,7 +31,7 @@ jobs:
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
@@ -81,18 +78,15 @@ jobs:
         with:
           name: unit-test-report
           path: |
-            parcel-volume-forecast/reports/tests/latest/test_run_summary.html
-            parcel-volume-forecast/reports/tests/latest/test_run_summary.json
-            parcel-volume-forecast/reports/tests/latest/junit.xml
+            reports/tests/latest/test_run_summary.html
+            reports/tests/latest/test_run_summary.json
+            reports/tests/latest/junit.xml
           if-no-files-found: warn
 
   smoke:
     name: Forecast smoke check
     runs-on: ubuntu-latest
     needs: test
-    defaults:
-      run:
-        working-directory: parcel-volume-forecast
 
     steps:
       - name: Check out repository
@@ -101,7 +95,7 @@ jobs:
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
@@ -112,5 +106,5 @@ jobs:
         run: |
           python src/training/train_xgboost.py \
             --experiment 'ci-smoke' \
-            --dataset-version 'Logistics data input.csv' \
+            --dataset-version 'v1' \
             --run-mode debug
